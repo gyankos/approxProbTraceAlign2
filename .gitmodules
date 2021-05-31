@@ -1,0 +1,3 @@
+[submodule "submodules/minauto"]
+	path = submodules/minauto
+	url = https://github.com/jackbergus/minauto
