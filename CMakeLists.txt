@@ -16,11 +16,11 @@ add_library(structures STATIC include/basics/trace.h
                               include/basics/AlterTrace.h)
 
 add_subdirectory(submodules/minauto)
+include_directories(submodules/minauto/include/minauto)
 include_directories(submodules/minauto/include)
-
 include_directories(submodules/minauto/submodules/mpreal)
-include_directories(submodules/ublas/include)
-include_directories(submodules/boost_core/include)
+include_directories(submodules/minauto/submodules/ublas/include)
+include_directories(submodules/minauto/submodules/boost_core/include)
 
-add_executable(complete_matching main.cpp TransitionGraph.cpp TransitionGraph.h)
-target_link_libraries(complete_matching hashing structures equiv mpfr gmp)
+add_executable(complete_matching main.cpp source/graphs/TransitionGraph.cpp include/graphs/TransitionGraph.h source/graphs/adjacency_graph.cpp include/graphs/adjacency_graph.h)
+target_link_libraries(complete_matching equiv mpfr gmp hashing structures )

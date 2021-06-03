@@ -27,12 +27,15 @@
 #include <cstdio>
 
 #include <minauto/Util.hpp>
+#include <minauto/Timer.hpp>
+#include <minauto/BLAS.hpp>
 #include <minauto/Automaton.hpp>
 
 #include <boost/numeric/ublas/matrix_sparse.hpp>
 #include <boost/numeric/ublas/matrix.hpp>
 #include <boost/numeric/ublas/operation.hpp>
 #include <boost/numeric/ublas/operation_sparse.hpp>
+#include "adjacency_graph.h"
 
 template <typename T>
 struct TransitionGraph {
@@ -49,88 +52,64 @@ struct TransitionGraph {
         Triplet& operator=(Triplet&& ) = default;
     };
 
-    std::unordered_map<size_t, std::string> inv_label_conversion;
-    std::vector<std::string>                tmp_labels;
-    std::unordered_map<std::string, size_t> final_labels;
-    std::vector<Triplet>                    tripletList;
+    //std::unordered_map<size_t, std::string> inv_label_conversion;   // Maps a node-id to an associated label
+    //std::vector<std::string>                tmp_labels;
+    std::unordered_map<std::string, size_t> final_labels;           // Maps a label to an unique integer
+    //std::vector<Triplet>                    tripletList;
+    const weigthed_labelled_automata& graph;
 
     size_t nodes = 0;
     size_t edges = 0;
     double weight = 1.0;
     size_t source = 0;
     size_t target = 0;
-
+    bool matrices_initialized = false;
     Matrix L, R;
 
-    TransitionGraph() {}
+    TransitionGraph(const weigthed_labelled_automata& graph, size_t src, size_t dst, double cost = 1.0, bool initialize_matrices = true) :
+        source{src}, target{dst}, weight{cost}, graph{graph} {
+        nodes = graph.V_size;
+        edges = graph.E_size;
+
+        size_t i = 0;
+        std::unordered_set<std::string> S{graph.node_label.begin(), graph.node_label.end()};
+        for (const auto& s : S)
+            final_labels[s] = i++;
+
+        if (initialize_matrices) {
+            this->initialize_matrices(graph);
+            matrices_initialized = true;
+        }
+    }
+
+    void initialize_matrices() {
+        {
+            Matrix rectMatrix(final_labels.size()+1, nodes+1);
+            for (const auto& cp: graph.inv_label_conversion) {
+                rectMatrix(final_labels.at(cp.second), cp.first) = 1;
+            }
+            std::swap(L, rectMatrix);
+        }
+        {
+            Matrix matrix(nodes+1, nodes+1);
+            for (size_t i = 0, N = graph.edge_ids.size(); i<N; i++) {
+                const auto& ref = graph.edge_ids.at(i);
+                matrix(ref.first, ref.second) = graph.edge_weight.at(i);
+            }
+
+            std::swap(R, matrix);
+        }
+        matrices_initialized = true;
+    }
     TransitionGraph(const TransitionGraph& ) = default;
     TransitionGraph(TransitionGraph&& ) = default;
     TransitionGraph& operator=(const TransitionGraph& ) = default;
     TransitionGraph& operator=(TransitionGraph&& ) = default;
 
-    TransitionGraph(const std::string &filename) {
-        FILE* file = fopen(filename.c_str(), "r");
-        bool error = false;
-        if (file) {
-            int i;
-            double w = 1;
-            // Reading the number of the nodes
-            i = fscanf(file, "nodes: %zd\n", &nodes);
-            error = (i == EOF || (i != 1));
-            if (error) return;
-            i = fscanf(file, "edges: %zd\n", &edges);
-            error = (i == EOF || (i != 1));
-            if (error) return;
-            i = fscanf(file, "source: %zd\n", &source);
-            error = (i == EOF || (i != 1));
-            if (error) return;
-            i = fscanf(file, "target: %zd\n", &target);
-            error = (i == EOF || (i != 1));
-            if (error) return;
-            i = fscanf(file, "weight: %lf\n", &w);
-            error = (i == EOF || (i != 1));
-            if (error) return;
-
-            for (size_t j = 0; j<nodes; j++) {
-                size_t node_no;
-                char string[124];
-                std::string k;
-                i = fscanf(file, "%zd %123s\n", &node_no, string);
-                error = (i == EOF || (i != 2));
-                if (error) return;
-                k = std::string(string);
-                if (!addNode(node_no, k)) return;
-            }
 
 
-            for (size_t j = 0; j<edges; j++) {
-                size_t src, dst;
-                double weight = 0.0;
-                i = fscanf(file, "%zd %zd %lf\n", &src, &dst, &weight);
-                error = (i == EOF || (i != 3));
-                if (error) return;
-                assert(std::abs(weight) <= 1.0);
-                addEdge(src, dst, weight);
-            }
-            finalizeEdgesMatrix(w);
-            fclose(file);
-        }
-    }
 
-    TransitionGraph fromString(const std::string &string, double stringWeight) {
-        assert(!string.empty());
-        TransitionGraph rg;
-        size_t n = string.size();
-        rg.init(n, n-1, 0, n-1);
-        for (size_t i = 0; i<n-1; i++) {
-            rg.addNode(i, std::string{string[i]});
-            rg.addEdge(i, i+1, 1.0);
-        }
-        rg.addNode(n-1, std::string{string[n-1]});
-        rg.finalizeEdgesMatrix(stringWeight);
-        return rg;
-    }
-
+#if 0
     /**
      * Initialization of some initial values
      * @param vSize
@@ -170,7 +149,7 @@ struct TransitionGraph {
         if (weight != 0) tripletList.emplace_back(src,dst,weight);
     }
 
-    void finalizeEdgesMatrix(double cost) {
+    void finalizeEdgesMatrix(double cost, bool store_matrices = true) {
         weight = cost;
         edges = tripletList.size();
         nodes++;
@@ -179,19 +158,21 @@ struct TransitionGraph {
         {
             std::sort(tmp_labels.begin(), tmp_labels.end() );
             tmp_labels.erase(std::unique(tmp_labels.begin(), tmp_labels.end() ), tmp_labels.end() );
-            Matrix rectMatrix(tmp_labels.size()+1, nodes+1);
 
             for (size_t i = 0, N = tmp_labels.size(); i < N; i++)
                 final_labels[tmp_labels.at(i)] = i;
             tmp_labels.clear();
-            for (const auto& cp: inv_label_conversion) {
-                rectMatrix(final_labels.at(cp.second), cp.first) = 1;
+            if (store_matrices) {
+                Matrix rectMatrix(tmp_labels.size()+1, nodes+1);
+                for (const auto& cp: inv_label_conversion) {
+                    rectMatrix(final_labels.at(cp.second), cp.first) = 1;
+                }
+                L = rectMatrix;
             }
-            L = rectMatrix;
         }
 
         // Creating the R matrix
-        {
+        if (store_matrices) {
             Matrix matrix(nodes+1, nodes+1);
             auto it = tripletList.begin();
             while(it != tripletList.end()) {
@@ -202,6 +183,9 @@ struct TransitionGraph {
             R = matrix;
         }
     }
+
+#endif
+
 };
 
 

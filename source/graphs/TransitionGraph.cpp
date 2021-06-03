@@ -18,4 +18,4 @@
  * along with ProbabilisticTraceAlignment. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "TransitionGraph.h"
+#include "graphs/TransitionGraph.h"
