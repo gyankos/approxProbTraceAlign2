@@ -65,7 +65,10 @@ void printAllPathsUtil(const adjacency_graph* graph, size_t u, size_t d, std::un
 struct weigthed_labelled_automata : public adjacency_graph {
     std::vector<double> edge_weight;
     std::vector<std::string> node_label;
-    std::unordered_map<size_t, std::string> inv_label_conversion;   // Maps a node-id to an associated label
+    std::unordered_map<size_t, std::string> inv_label_conversion;          // Maps a node-id to an associated label
+    std::unordered_map<std::string, std::vector<size_t>> label_conversion; // Maps a label to the nodes associated to it
+    std::unordered_map<std::string, size_t> final_labels;                  // Maps a label to an unique-id associated to it
+    size_t count_labels = 0;
 
     weigthed_labelled_automata();
     weigthed_labelled_automata(const weigthed_labelled_automata&) = default;

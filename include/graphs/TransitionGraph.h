@@ -71,10 +71,6 @@ struct TransitionGraph {
         nodes = graph.V_size;
         edges = graph.E_size;
 
-        size_t i = 0;
-        std::unordered_set<std::string> S{graph.node_label.begin(), graph.node_label.end()};
-        for (const auto& s : S)
-            final_labels[s] = i++;
 
         if (initialize_matrices) {
             this->initialize_matrices(graph);

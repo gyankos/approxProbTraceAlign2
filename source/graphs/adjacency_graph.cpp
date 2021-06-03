@@ -44,7 +44,12 @@ size_t add_node(adjacency_graph *graph, const std::string& label) {
     if (graph->casusu == WEIGHTED_LABELLED_GRAPH_CASE) {
         auto G = ((weigthed_labelled_automata*)graph);
         G->node_label.emplace_back(label);
-        G->inv_label_conversion.insert(std::make_pair(graph->V_size, label)).second;
+        G->label_conversion[label].emplace_back(G->count_labels);
+        G->inv_label_conversion.insert(std::make_pair(graph->V_size, label));
+        auto it = G->final_labels.emplace(label, G->count_labels);
+        if (it.second) {
+            G->count_labels++;
+        }
     }
     return graph->V_size++;
 }
