@@ -40,7 +40,7 @@
 template <typename T>
 struct TransitionGraph {
     typedef boost::numeric::ublas::compressed_matrix<T,boost::numeric::ublas::row_major> Matrix;
-    struct Triplet {
+    /*struct Triplet {
         size_t src, dst;
         T      value;
 
@@ -50,11 +50,11 @@ struct TransitionGraph {
         Triplet(Triplet&& ) = default;
         Triplet& operator=(const Triplet& ) = default;
         Triplet& operator=(Triplet&& ) = default;
-    };
+    };*/
 
     //std::unordered_map<size_t, std::string> inv_label_conversion;   // Maps a node-id to an associated label
     //std::vector<std::string>                tmp_labels;
-    std::unordered_map<std::string, size_t> final_labels;           // Maps a label to an unique integer
+    //std::unordered_map<std::string, size_t> final_labels;           // Maps a label to an unique integer
     //std::vector<Triplet>                    tripletList;
     const weigthed_labelled_automata& graph;
 
@@ -66,23 +66,22 @@ struct TransitionGraph {
     bool matrices_initialized = false;
     Matrix L, R;
 
-    TransitionGraph(const weigthed_labelled_automata& graph, size_t src, size_t dst, double cost = 1.0, bool initialize_matrices = true) :
+    TransitionGraph(const weigthed_labelled_automata& graph, size_t src, size_t dst, double cost = 1.0, bool im = true) :
         source{src}, target{dst}, weight{cost}, graph{graph} {
         nodes = graph.V_size;
         edges = graph.E_size;
 
-
-        if (initialize_matrices) {
-            this->initialize_matrices(graph);
+        if (im) {
+            initialize_matrices();
             matrices_initialized = true;
         }
     }
 
     void initialize_matrices() {
         {
-            Matrix rectMatrix(final_labels.size()+1, nodes+1);
+            Matrix rectMatrix(graph.final_labels.size()+1, nodes+1);
             for (const auto& cp: graph.inv_label_conversion) {
-                rectMatrix(final_labels.at(cp.second), cp.first) = 1;
+                rectMatrix(graph.final_labels.at(cp.second), cp.first) = 1;
             }
             std::swap(L, rectMatrix);
         }

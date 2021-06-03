@@ -83,6 +83,17 @@ namespace jackbergus {
             friend std::ostream &operator<<(std::ostream &os, const probabilistic_valid_sequence &trace) {
                 return os << "ℙ_N(" << trace.sequence << ") = " << trace.probability;
             }
+
+            double extend_with_subsequent_step(const std::vector<std::pair<double, size_t>>& ref, std::vector<probabilistic_valid_sequence>& V) const {
+                size_t N = ref.size();
+                double sum = 0;
+                for (size_t i = 0; i<N; i++) {
+                    auto& refV = V.emplace_back(*this);
+                    sum += (refV.probability *= ref.at(i).first);
+                    refV.sequence.emplace_back(ref.at(i).second);
+                }
+                return sum;
+            }
         };
 
         /**
@@ -95,6 +106,7 @@ namespace jackbergus {
             probabilistic_log_trace  t_with_prob;
             std::vector<struct probabilistic_valid_sequence> underlying_sequences;
 
+            probabilisitc_model_trace(double prob) : t_with_prob(prob) {}
             probabilisitc_model_trace() {}
             probabilisitc_model_trace(const probabilisitc_model_trace& ) = default;
             probabilisitc_model_trace(probabilisitc_model_trace&& ) = default;

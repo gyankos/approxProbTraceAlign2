@@ -58,6 +58,11 @@ size_t add_edge(adjacency_graph *graph, size_t src, size_t dst, double cost) {
     graph->edge_ids.emplace_back(src, dst);
     graph->ingoing_edges[dst].emplace_back(graph->E_size);
     if (graph->casusu == WEIGHTED_LABELLED_GRAPH_CASE) {
+        if (graph->E_size == 0)
+            ((weigthed_labelled_automata*)graph)->minimum_edge_weight = cost;
+        else
+            ((weigthed_labelled_automata*)graph)->minimum_edge_weight = std::min(
+                    ((weigthed_labelled_automata*)graph)->minimum_edge_weight, cost);
         ((weigthed_labelled_automata*)graph)->edge_weight.emplace_back(cost);
     }
     return graph->nodes.at(src).emplace_back(graph->E_size++);

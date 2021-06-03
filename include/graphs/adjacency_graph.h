@@ -69,6 +69,7 @@ struct weigthed_labelled_automata : public adjacency_graph {
     std::unordered_map<std::string, std::vector<size_t>> label_conversion; // Maps a label to the nodes associated to it
     std::unordered_map<std::string, size_t> final_labels;                  // Maps a label to an unique-id associated to it
     size_t count_labels = 0;
+    double minimum_edge_weight;
 
     weigthed_labelled_automata();
     weigthed_labelled_automata(const weigthed_labelled_automata&) = default;
