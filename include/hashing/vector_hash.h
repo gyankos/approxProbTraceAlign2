@@ -42,6 +42,22 @@ namespace std {
 
 }
 
+#include <set>
+
+namespace std {
+    template <typename T>
+    struct hash<std::set<T>>
+    {
+        std::size_t operator()(const std::set<T>& k) const
+        {
+            size_t init = 31;
+            for (const auto& x : k) init = hash_combine<T>(init, x);
+            return init;
+        }
+    };
+
+}
+
 template < class T > std::ostream& operator << (std::ostream& os, const std::vector<T>& v) {
     os << "⟦";
     typename std::vector<T>::const_iterator ii = v.begin();

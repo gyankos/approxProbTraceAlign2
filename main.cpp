@@ -1,5 +1,9 @@
 #include <iostream>
 
+
+#include <hashing/pair_hash.h>
+#include <hashing/vector_hash.h>
+
 #include <basics/trace.h>
 #include <graphs/TransitionGraph.h>
 #include <graphs/adjacency_graph.h>
@@ -256,23 +260,87 @@ void test_viterbi_1() {
 }
 
 #include <cmath>
+#include <set>
 
-void dfa_weighted_labelled_automata(TransitionGraph<double>& tg,
+/**
+ * Defines the global node properties for merging nodes before minimizing the automaton.
+ * I.e., a node is defined by its node id, the associated label, and the outgoing edges' labels (from the
+ * target node) as well as their associated cost. This will be used to identify when we reached a similar node
+ */
+struct global_node_properties {
+    std::set<size_t>                            node_id;
+    std::string                                 node_label;
+    std::vector<std::pair<std::string, double>> outgoing_edges;
+
+    global_node_properties(const std::string &nodeLabel) : node_label(nodeLabel)  {
+        sorted = false;
+    }
+    void insert_edge(const std::string& s, double w) {
+        outgoing_edges.emplace_back(s, w);
+        sorted = false;
+    }
+    void finalize() {
+        if (!sorted) {
+            std::sort(outgoing_edges.begin(), outgoing_edges.end());
+            sorted = true;
+        }
+    }
+
+    bool operator==(const global_node_properties &rhs) const {
+        assert(sorted);
+        assert(rhs.sorted);
+        return node_id == rhs.node_id &&
+               node_label == rhs.node_label &&
+               outgoing_edges == rhs.outgoing_edges;
+    }
+    bool operator!=(const global_node_properties &rhs) const {
+        return !(rhs == *this);
+    }
+              private:
+                  bool sorted = false;
+};
+
+
+namespace std {
+    /**
+     * Hashing function associated to global_node_properties
+     */
+    template <>
+    struct hash<global_node_properties> {
+        std::size_t operator()(const global_node_properties& k) const {
+            std::hash<std::string> sh;
+            std::hash<double> dh;
+            size_t seed = hash_combine(hash_combine(31, k.node_id), k.node_label);
+
+            size_t h = 17;
+            for (const auto& cp : k.outgoing_edges) h = hash_combine(h, sh(cp.first) ^ dh(cp.second));
+
+            return hash_combine(seed, h);
+        }
+    };
+}
+
+ssize_t dfa_weighted_labelled_automata(TransitionGraph<double>& tg,
                                     const probabilisitc_model_trace& MT,
                                     weigthed_labelled_automata& out,
-                                    double halting_condition) {
+                                    double halting_condition,
+                                    std::unordered_map<global_node_properties, size_t>& node_compact_info) {
 
     constexpr double limit = std::numeric_limits<double>::epsilon();
     if ((std::abs(MT.t_with_prob.probability - halting_condition) < limit) ||
-            (MT.t_with_prob.probability < limit)) return;
+            (MT.t_with_prob.probability < limit)) return -1;
 
     //std::unordered_set<size_t> curr;
+
+    std::string curr_node_label = *MT.t_with_prob.t.rbegin();
+    global_node_properties gnp{curr_node_label};
     std::unordered_map<size_t, std::vector<size_t>> node_id_to_sequence_id;
     for (size_t i = 0, N = MT.underlying_sequences.size(); i<N; i++) {
         const auto& eta = MT.underlying_sequences.at(i);
         size_t M = *eta.sequence.rbegin();
         //curr.insert(M);
         node_id_to_sequence_id[M].emplace_back(i);
+        gnp.node_id.insert(M);
     }
 
     std::unordered_map<std::string, probabilisitc_model_trace> MM;
@@ -297,18 +365,53 @@ void dfa_weighted_labelled_automata(TransitionGraph<double>& tg,
         }
     }
 
-
-    for (const auto& cp : MM) {
-        if ((MT.t_with_prob.probability > 0) && ( (cp.second.t_with_prob.probability/MT.t_with_prob.probability) > halting_condition )) {
+    // Now, determining the outgoing edges arcs, that are going to be used for
+    // determining the node
+    auto it = MM.begin();
+    while (it != MM.end()) {
+        if ((MT.t_with_prob.probability > 0) && ( (it->second.t_with_prob.probability/MT.t_with_prob.probability) > halting_condition )) {
             assert(MT.t_with_prob.probability > 0);
-            std::cout <<  " -[" << cp.second.t_with_prob.probability / MT.t_with_prob.probability << "]-> " << cp.first << " : " << cp.second.t_with_prob << std::endl << std::endl << std::endl;
-            dfa_weighted_labelled_automata(tg, cp.second, out, halting_condition);
+            double transition_cost = it->second.t_with_prob.probability / MT.t_with_prob.probability;
+            gnp.insert_edge(it->first, transition_cost);
+            ///std::cout <<  " -[" << transition_cost << "]-> " << it->first << " : " << it->second.t_with_prob << std::endl << std::endl << std::endl;
+            it++;
+        } else {
+            it = MM.erase(it);
         }
     }
+    gnp.finalize();
+
+    ssize_t src = -1;
+    auto it2 = node_compact_info.find(gnp);
+    if (it2 != node_compact_info.end()) {
+        src = it2->second;
+    } else {
+        src = add_node(&out, curr_node_label);
+    }
+
+    it = MM.begin();
+    while (it != MM.end()) {
+        ssize_t dst = dfa_weighted_labelled_automata(tg, it->second, out, halting_condition, node_compact_info);
+        double transition_cost = it->second.t_with_prob.probability / MT.t_with_prob.probability;
+        if (dst != -1) {
+            add_edge(&out, src, dst, transition_cost);
+        } else {
+            if (out.has_well == -1) {
+                out.has_well = add_node(&out, ".");
+                add_edge(&out, out.has_well, out.has_well, 1.0);
+            }
+            add_edge(&out, src, out.has_well, transition_cost);
+        }
+        it++;
+    }
+
+    return src;
 }
 
 void generate_my_minimization(double init_prob = 1.0, double stop_probability = 1E-06) {
     weigthed_labelled_automata wla, out;
+    std::unordered_map<global_node_properties, size_t> node_compact_info;
+#if 0
     size_t n0 = add_node(&wla, "a");
     size_t n1 = add_node(&wla, "a");
     size_t n2 = add_node(&wla, "a");
@@ -328,6 +431,32 @@ void generate_my_minimization(double init_prob = 1.0, double stop_probability = 
     add_edge(&wla, n5, n4, 1.0);
 
     TransitionGraph<double> tg(wla, n0, n4);
+#else
+    size_t n0 = add_node(&wla, "a");
+    size_t n1 = add_node(&wla, "b");
+    size_t n2 = add_node(&wla, "b");
+    size_t n3 = add_node(&wla, "c");
+    size_t n4 = add_node(&wla, "a");
+    size_t n5 = add_node(&wla, "c");
+    size_t n6 = add_node(&wla, "a");
+    size_t n7 = add_node(&wla, "f");
+
+    add_edge(&wla, n0, n1, 0.5);
+    add_edge(&wla, n1, n3, 0.5);
+    add_edge(&wla, n3, n1, 0.5);
+    add_edge(&wla, n1, n4, 0.5);
+    add_edge(&wla, n4, n7, 1.0);
+    add_edge(&wla, n3, n7, 0.5);//0.5
+
+    add_edge(&wla, n0, n2, 0.5);
+    add_edge(&wla, n2, n5, 0.5);
+    add_edge(&wla, n5, n2, 0.5);
+    add_edge(&wla, n2, n6, 0.5);
+    add_edge(&wla, n6, n7, 1.0);
+    add_edge(&wla, n5, n7, 0.5);//0.5
+
+    TransitionGraph<double> tg(wla, n0, n4);
+#endif
 
     probabilisitc_model_trace pmt;
     pmt.t_with_prob.probability = init_prob;
@@ -335,7 +464,9 @@ void generate_my_minimization(double init_prob = 1.0, double stop_probability = 
     pmt.underlying_sequences.emplace_back(init_prob, n0);
     //std::cout << pmt << std::endl;
 
-    dfa_weighted_labelled_automata(tg, pmt, out, stop_probability);
+    dfa_weighted_labelled_automata(tg, pmt, out, stop_probability, node_compact_info);
+
+    dot(&out, std::cout);
 }
 
 void automata_minimization() {

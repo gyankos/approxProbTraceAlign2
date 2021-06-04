@@ -55,6 +55,8 @@ template <class T> size_t hash_combine(const std::size_t seed, const T& v)
     return rotl(seed,std::numeric_limits<size_t>::digits/3) ^ distribute(std::hash<T>{}(v));
 }
 
+size_t hash_combine(const std::size_t seed, size_t v);
+
 /*namespace std {
 
     template <typename T>
