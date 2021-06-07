@@ -174,11 +174,11 @@ bool check(	MinimisationSettings& msettings,Settings& settings, Automaton& a, Au
         mpfr::mpreal absolute_precision =  (check_absolute_precision == 1e-6) ? std::numeric_limits<mpfr::mpreal>::epsilon() : check_absolute_precision;
 
         Precision<mpfr::mpreal> prec(absolute_precision,check_relative_precision);
-    */
-    Automaton c(a);
-    Automaton d(b);
+        */
+        Automaton c(a);
+        Automaton d(b);
 
-    Automaton diff(c,d);
+        Automaton diff(c,d);
 
     unsigned k = a.getNrOfStates();
 
@@ -270,13 +270,22 @@ void test_viterbi_1() {
 struct global_node_properties {
     std::set<size_t>                            node_id;
     std::string                                 node_label;
-    std::vector<std::pair<std::string, double>> outgoing_edges;
+#ifdef DO_STRINGS
+    std::vector<std::pair<std::string, std::string>>
+#else
+    std::vector<std::pair<std::string, double>>
+#endif
+    outgoing_edges;
 
     global_node_properties(const std::string &nodeLabel) : node_label(nodeLabel)  {
         sorted = false;
     }
     void insert_edge(const std::string& s, double w) {
-        outgoing_edges.emplace_back(s, w);
+#ifdef DO_STRINGS
+        outgoing_edges.emplace_back(s, std::to_string(w));
+#else
+        outgoing_edges.emplace_back(s, (w));
+#endif
         sorted = false;
     }
     void finalize() {
@@ -298,6 +307,14 @@ struct global_node_properties {
     }
               private:
                   bool sorted = false;
+
+public:
+    friend std::ostream &operator<<(std::ostream &os, const global_node_properties &properties) {
+        std::vector<size_t> S{properties.node_id.begin(), properties.node_id.end()};
+        os << "node_id: " << S << " node_label: " << properties.node_label << " outgoing_edges: "
+           << properties.outgoing_edges << " sorted: " << properties.sorted;
+        return os;
+    }
 };
 
 
@@ -309,25 +326,48 @@ namespace std {
     struct hash<global_node_properties> {
         std::size_t operator()(const global_node_properties& k) const {
             std::hash<std::string> sh;
+#ifndef DO_STRINGS
             std::hash<double> dh;
+#endif
             size_t seed = hash_combine(hash_combine(31, k.node_id), k.node_label);
 
             size_t h = 17;
-            for (const auto& cp : k.outgoing_edges) h = hash_combine(h, sh(cp.first) ^ dh(cp.second));
 
-            return hash_combine(seed, h);
+            for (const auto& cp : k.outgoing_edges) h = hash_combine(h, sh(cp.first)
+#ifdef DO_STRINGS
+                                                                        ^ sh(cp.second));
+#else
+                                                                        ^ dh(cp.second));
+#endif
+
+            size_t hash =hash_combine(seed, h);
+            return hash;
         }
     };
 }
 
-ssize_t dfa_weighted_labelled_automata(TransitionGraph<double>& tg,
-                                    const probabilisitc_model_trace& MT,
-                                    weigthed_labelled_automata& out,
-                                    double halting_condition,
-                                    std::unordered_map<global_node_properties, size_t>& node_compact_info) {
+struct determinization_information {
+    ssize_t has_result_well_state = -1;
+    ssize_t is_final_state_inserted_into_result = -1;
+    double  halting_condition = 0.0;
+    size_t  tg_initial, tg_final;
+
+    determinization_information(double haltingCondition, size_t  tg_initial, size_t  tg_final) : tg_initial(tg_initial), tg_final(tg_final),  halting_condition(haltingCondition), has_result_well_state{-1}, is_final_state_inserted_into_result{-1} {}
+
+    determinization_information(const determinization_information& ) = default;
+    determinization_information(determinization_information&& ) = default;
+    determinization_information& operator=(const determinization_information& ) = default;
+    determinization_information& operator=(determinization_information&& ) = default;
+};
+
+ssize_t nfa_to_dfa_weighted_labelled_automata(weigthed_labelled_automata& graph,
+                                              const probabilisitc_model_trace& MT,
+                                              weigthed_labelled_automata& out,
+                                              determinization_information& info,
+                                              std::unordered_map<global_node_properties, size_t>& node_compact_info) {
 
     constexpr double limit = std::numeric_limits<double>::epsilon();
-    if ((std::abs(MT.t_with_prob.probability - halting_condition) < limit) ||
+    if ((std::abs(MT.t_with_prob.probability - info.halting_condition) < limit) ||
             (MT.t_with_prob.probability < limit)) return -1;
 
     //std::unordered_set<size_t> curr;
@@ -348,10 +388,10 @@ ssize_t dfa_weighted_labelled_automata(TransitionGraph<double>& tg,
         size_t node_id = node_id_to_sequenceId.first;
 
         std::unordered_map<std::string, std::vector<std::pair<double, size_t>>> M;
-        for (const size_t edge_id : getOutgoingEdgesId((adjacency_graph *) &tg.graph, node_id)) {
-            double edge_weight = tg.graph.edge_weight.at(edge_id);
-            size_t dst = tg.graph.edge_ids.at(edge_id).second;
-            M[node_label(&tg.graph, dst)].emplace_back(edge_weight, dst);
+        for (const size_t edge_id : getOutgoingEdgesId((adjacency_graph *) &graph, node_id)) {
+            double edge_weight = graph.edge_weight.at(edge_id);
+            size_t dst = graph.edge_ids.at(edge_id).second;
+            M[node_label(&graph, dst)].emplace_back(edge_weight, dst);
         }
 
         for (auto& cp : M) {
@@ -369,7 +409,7 @@ ssize_t dfa_weighted_labelled_automata(TransitionGraph<double>& tg,
     // determining the node
     auto it = MM.begin();
     while (it != MM.end()) {
-        if ((MT.t_with_prob.probability > 0) && ( (it->second.t_with_prob.probability/MT.t_with_prob.probability) > halting_condition )) {
+        if ((MT.t_with_prob.probability > 0) && ( (it->second.t_with_prob.probability/MT.t_with_prob.probability) > info.halting_condition )) {
             assert(MT.t_with_prob.probability > 0);
             double transition_cost = it->second.t_with_prob.probability / MT.t_with_prob.probability;
             gnp.insert_edge(it->first, transition_cost);
@@ -381,29 +421,57 @@ ssize_t dfa_weighted_labelled_automata(TransitionGraph<double>& tg,
     }
     gnp.finalize();
 
-    ssize_t src = -1;
-    auto it2 = node_compact_info.find(gnp);
-    if (it2 != node_compact_info.end()) {
-        src = it2->second;
-    } else {
-        src = add_node(&out, curr_node_label);
+    // Checking if we arrived in the final state: please remember that, in our model, the final state has no
+    // outgoing edges, and so it is not possible to have a state containing both the final state and another state
+    bool is_final_state = false;
+    if ((gnp.node_id.size() == 1) && (*gnp.node_id.begin() == info.tg_final)) {
+        assert(MM.empty());
+        is_final_state = true;
     }
 
-    it = MM.begin();
-    while (it != MM.end()) {
-        ssize_t dst = dfa_weighted_labelled_automata(tg, it->second, out, halting_condition, node_compact_info);
-        double transition_cost = it->second.t_with_prob.probability / MT.t_with_prob.probability;
-        if (dst != -1) {
-            add_edge(&out, src, dst, transition_cost);
-        } else {
-            if (out.has_well == -1) {
-                out.has_well = add_node(&out, ".");
-                add_edge(&out, out.has_well, out.has_well, 1.0);
-            }
-            add_edge(&out, src, out.has_well, transition_cost);
+    ssize_t src = -1;
+    if (is_final_state) {
+        // As in this model the final state is just one, when I reach it, then remember that
+        // and do not create a novel node, but just use the one that you already have
+        if (info.is_final_state_inserted_into_result == -1) {
+            info.is_final_state_inserted_into_result = add_node(&out, curr_node_label);
         }
-        it++;
+        src = info.is_final_state_inserted_into_result;
+    } else {
+        std::cout << gnp << std::endl;
+        // Checking whether we already passed through a node that has the same outgoing edges with the same weight,
+        // and whether the node from where we start is indeed the same node. In this case, do not replicate the state
+        auto it2 = node_compact_info.emplace(gnp, 0);
+        if (!it2.second) {
+            src = it2.first->second;
+        } else {
+            src = it2.first->second = add_node(&out, curr_node_label);
+            // Performing the recursive visit of the node towards the adjacent ones
+            it = MM.begin();
+            while (it != MM.end()) {
+                ssize_t dst = nfa_to_dfa_weighted_labelled_automata(graph, it->second, out, info, node_compact_info);
+                // See handnotes for the explanation. Roughly speaking,
+                // 1. MT.t_with_prob.probability, determines the probability that we accumulated to reach the node,
+                //                                after merging the edges pointing towards nodes with the same label
+                // 2. it->second.t_with_prob.probability, determines the overall probability that is required to generate
+                //                                        the trace by adding a novel character
+                // => As (1.) * transition_cost = (2.), then the cost required to perform the actual transition is (2.)/(1.)
+                double transition_cost = it->second.t_with_prob.probability / MT.t_with_prob.probability;
+                if (dst != -1) {
+                    add_edge(&out, src, dst, transition_cost);
+                } else {
+                    if (info.has_result_well_state == -1) {
+                        info.has_result_well_state = add_node(&out, ".");
+                        add_edge(&out, info.has_result_well_state, info.has_result_well_state, 1.0);
+                    }
+                    add_edge(&out, src, info.has_result_well_state, transition_cost);
+                }
+                it++;
+            }
+        }
     }
+
+
 
     return src;
 }
@@ -411,7 +479,7 @@ ssize_t dfa_weighted_labelled_automata(TransitionGraph<double>& tg,
 void generate_my_minimization(double init_prob = 1.0, double stop_probability = 1E-06) {
     weigthed_labelled_automata wla, out;
     std::unordered_map<global_node_properties, size_t> node_compact_info;
-#if 0
+#if 1
     size_t n0 = add_node(&wla, "a");
     size_t n1 = add_node(&wla, "a");
     size_t n2 = add_node(&wla, "a");
@@ -430,7 +498,8 @@ void generate_my_minimization(double init_prob = 1.0, double stop_probability = 
     add_edge(&wla, n3, n5, 1.0);
     add_edge(&wla, n5, n4, 1.0);
 
-    TransitionGraph<double> tg(wla, n0, n4);
+    //TransitionGraph<double> tg(wla, n0, n4);
+    determinization_information info{stop_probability, n0, n4};
 #else
     size_t n0 = add_node(&wla, "a");
     size_t n1 = add_node(&wla, "b");
@@ -441,21 +510,25 @@ void generate_my_minimization(double init_prob = 1.0, double stop_probability = 
     size_t n6 = add_node(&wla, "a");
     size_t n7 = add_node(&wla, "f");
 
+    bool withLoops = true;
+
     add_edge(&wla, n0, n1, 0.5);
     add_edge(&wla, n1, n3, 0.5);
-    add_edge(&wla, n3, n1, 0.5);
     add_edge(&wla, n1, n4, 0.5);
     add_edge(&wla, n4, n7, 1.0);
-    add_edge(&wla, n3, n7, 0.5);//0.5
-
     add_edge(&wla, n0, n2, 0.5);
     add_edge(&wla, n2, n5, 0.5);
-    add_edge(&wla, n5, n2, 0.5);
     add_edge(&wla, n2, n6, 0.5);
     add_edge(&wla, n6, n7, 1.0);
-    add_edge(&wla, n5, n7, 0.5);//0.5
+    if (withLoops) {
+        add_edge(&wla, n3, n1, 0.5);
+        add_edge(&wla, n5, n2, 0.5);
+    }
+    add_edge(&wla, n3, n7, withLoops ? 0.5 : 1.0);
+    add_edge(&wla, n5, n7, withLoops ? 0.5 : 1.0);
 
-    TransitionGraph<double> tg(wla, n0, n4);
+    //TransitionGraph<double> tg(wla, n0, n4);
+    determinization_information info{stop_probability, n0, n7};
 #endif
 
     probabilisitc_model_trace pmt;
@@ -464,19 +537,29 @@ void generate_my_minimization(double init_prob = 1.0, double stop_probability = 
     pmt.underlying_sequences.emplace_back(init_prob, n0);
     //std::cout << pmt << std::endl;
 
-    dfa_weighted_labelled_automata(tg, pmt, out, stop_probability, node_compact_info);
+    // Preliminary minimizing the visit and the complexity by compacting the edge traversing: sum up the edges' probability
+    // leading to the same outgoing state
+    edge_compacting(wla);
+
+    // Making the NFA into a DFA, by exploiting the prefix strategy
+    nfa_to_dfa_weighted_labelled_automata(wla, pmt, out, info, node_compact_info);
+
+    // While creating the wheel state, I might have multiple outgoing edges leading to the same state. Therefore, I
+    // could compact those into one single edge by summing up the weights
+    edge_compacting(out);
+
+
 
     dot(&out, std::cout);
 }
 
 void automata_minimization() {
-    test_automata_minimization(7, 0, 6, {{0, 1, 0.5, "a"},
+    test_automata_minimization(4, 0, 3, {{0, 1, 0.5, "a"},
                                          {0, 2, 0.5, "b"},
-                                         {2, 4, 1.0, "b"},
-                                         {4, 6, 1.0, "c"},
-                                         {1, 3, 1.0, "b"},
-                                         {3, 5, 1.0, "b"},
-                                         {5, 6, 1.0, "c"}});
+                                         {1, 1, 0.5, "c"},
+                                         {2, 2, 0.5, "c"},
+                                         {1, 3, 0.5, "d"},
+                                         {2, 3, 0.5, "d"}});
 }
 
 int main() {

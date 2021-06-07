@@ -53,13 +53,26 @@ struct adjacency_graph {
 
 size_t add_node(adjacency_graph* graph, const std::string& label = "");
 size_t add_edge(adjacency_graph* graph, size_t src, size_t dst, double cost = 1.0);
+
+/**
+ *
+ * @param graph
+ * @param edge_id           Edge to be changed
+ * @param new_dst           New destination for the edge
+ * @param cost_to_update    New cost for the edge
+ * @return
+ */
+bool update_edge_target(adjacency_graph *graph, size_t edge_id, size_t new_dst, double* cost_to_update);
+
+bool remove_edge(adjacency_graph *graph, size_t edge_id);
+
 std::pair<size_t, size_t> add_undirected_edge(adjacency_graph* graph, size_t src, size_t dst, double cost = 1.0);
 const std::pair<size_t, size_t>& edge_from_id(const adjacency_graph* graph, size_t edge_id);
 const std::vector<size_t> &getOutgoingEdgesId(adjacency_graph* graph, size_t node_id);
 const std::vector<size_t> &getIngoingEdgesId(const adjacency_graph* graph, size_t node_id);
 void DFSUtil(const adjacency_graph* graph, size_t src, std::unordered_set<size_t> &visited);
 void printAllPathsUtil(const adjacency_graph* graph, size_t u, size_t d, std::unordered_set<size_t> &visited, std::vector<ssize_t> &path,
-                                   size_t path_index, std::unordered_set<size_t> &visited_src_dst, std::unordered_set<size_t> &global);
+                       size_t path_index, std::unordered_set<size_t> &visited_src_dst, std::unordered_set<size_t> &global);
 
 
 struct weigthed_labelled_automata : public adjacency_graph {
@@ -70,7 +83,6 @@ struct weigthed_labelled_automata : public adjacency_graph {
     std::unordered_map<std::string, size_t> final_labels;                  // Maps a label to an unique-id associated to it
     size_t count_labels = 0;
     double minimum_edge_weight;
-    ssize_t has_well = -1;
 
     weigthed_labelled_automata();
     weigthed_labelled_automata(const weigthed_labelled_automata&) = default;
@@ -84,6 +96,5 @@ const std::string& node_label(const adjacency_graph* graph, size_t node_id);
 void dot(adjacency_graph* graph, std::ostream &os);
 void from_string(weigthed_labelled_automata& graph, const std::vector<std::string>& trace);
 
-
-
+void edge_compacting(weigthed_labelled_automata& graph);
 #endif //CLASSIFIERS_ADJACENCY_GRAPH_H
