@@ -25,6 +25,7 @@
 
 #include "graphs/adjacency_graph.h"
 #include <cassert>
+using namespace jackbergus::fuzzyStringMatching3::graphs;
 
 adjacency_graph::adjacency_graph() : V_size(0), E_size(0), casusu(ADJACENCY_GRAPH_CASE) {}
 
@@ -39,7 +40,7 @@ size_t adjacency_graph::add_edge(size_t src, size_t dst) {
     return nodes.at(src).emplace_back(E_size++);
 }*/
 
-size_t add_node(adjacency_graph *graph, const std::string& label) {
+size_t jackbergus::fuzzyStringMatching3::graphs::add_node(adjacency_graph *graph, const std::string& label) {
     graph->nodes.emplace_back();
     if (graph->casusu == WEIGHTED_LABELLED_GRAPH_CASE) {
         auto G = ((weigthed_labelled_automata*)graph);
@@ -54,7 +55,7 @@ size_t add_node(adjacency_graph *graph, const std::string& label) {
     return graph->V_size++;
 }
 
-size_t add_edge(adjacency_graph *graph, size_t src, size_t dst, double cost) {
+size_t jackbergus::fuzzyStringMatching3::graphs::add_edge(adjacency_graph *graph, size_t src, size_t dst, double cost) {
     graph->edge_ids.emplace_back(src, dst);
     graph->ingoing_edges[dst].emplace_back(graph->E_size);
     if (graph->casusu == WEIGHTED_LABELLED_GRAPH_CASE) {
@@ -87,7 +88,7 @@ bool update_edge_target(adjacency_graph *graph, size_t edge_id, size_t new_dst, 
     return true;
 }
 
-bool remove_edge(adjacency_graph *graph, size_t edge_id) {
+bool jackbergus::fuzzyStringMatching3::graphs::remove_edge(adjacency_graph *graph, size_t edge_id) {
     if ((!graph) || (graph->E_size <= edge_id) /*|| (graph->V_size <= new_dst)*/)
         return false;
     auto& edge_src_dst = graph->edge_ids.at(edge_id);
@@ -101,33 +102,33 @@ bool remove_edge(adjacency_graph *graph, size_t edge_id) {
     return true;
 }
 
-std::pair<size_t, size_t> add_undirected_edge(adjacency_graph *graph, size_t src, size_t dst, double cost) {
+std::pair<size_t, size_t> jackbergus::fuzzyStringMatching3::graphs::add_undirected_edge(adjacency_graph *graph, size_t src, size_t dst, double cost) {
     return {add_edge(graph, src, dst, cost), add_edge(graph, dst, src, cost)};
 }
 
-const std::pair<size_t, size_t> &edge_from_id(const adjacency_graph *graph, size_t edge_id) {
+const std::pair<size_t, size_t> &jackbergus::fuzzyStringMatching3::graphs::edge_from_id(const adjacency_graph *graph, size_t edge_id) {
     return graph->edge_ids.at(edge_id);
 }
 
-const std::vector<size_t> &getOutgoingEdgesId(adjacency_graph *graph, size_t node_id) {
+const std::vector<size_t> &jackbergus::fuzzyStringMatching3::graphs::getOutgoingEdgesId(adjacency_graph *graph, size_t node_id) {
     return graph->nodes.at(node_id);
 }
 
-const std::vector<size_t> &getIngoingEdgesId(const adjacency_graph *graph, size_t node_id) {
+const std::vector<size_t> &jackbergus::fuzzyStringMatching3::graphs::getIngoingEdgesId(const adjacency_graph *graph, size_t node_id) {
     return graph->ingoing_edges.at(node_id);
 }
 
-void DFSUtil(const adjacency_graph *graph, size_t src, std::unordered_set<size_t> &visited) {
+void jackbergus::fuzzyStringMatching3::graphs::DFSUtil(const adjacency_graph *graph, size_t src, std::unordered_set<size_t> &visited) {
     visited.insert(src);
 
     for (size_t edge_id : graph->nodes.at(src)) {
         size_t dst = graph->edge_ids.at(edge_id).second;
         if (!visited.contains(dst))
-            DFSUtil(graph, dst, visited);
+            jackbergus::fuzzyStringMatching3::graphs::DFSUtil(graph, dst, visited);
     }
 }
 
-void printAllPathsUtil(const adjacency_graph *graph, size_t u, size_t d, std::unordered_set<size_t> &visited,
+void jackbergus::fuzzyStringMatching3::graphs::printAllPathsUtil(const adjacency_graph *graph, size_t u, size_t d, std::unordered_set<size_t> &visited,
                        std::vector<ssize_t> &path, size_t path_index, std::unordered_set<size_t> &visited_src_dst,
                        std::unordered_set<size_t> &global) {
     // Mark the current node and store it in path[]
@@ -145,7 +146,7 @@ void printAllPathsUtil(const adjacency_graph *graph, size_t u, size_t d, std::un
         for (size_t edge_id : graph->nodes.at(u)) {
             size_t dst = graph->edge_ids.at(edge_id).second;
             if ((!visited.contains(dst)) && (!global.contains(dst)))
-                printAllPathsUtil(graph, dst, d, visited, path, path_index, visited_src_dst, global);
+                jackbergus::fuzzyStringMatching3::graphs::printAllPathsUtil(graph, dst, d, visited, path, path_index, visited_src_dst, global);
         }
     }
 
@@ -158,7 +159,7 @@ weigthed_labelled_automata::weigthed_labelled_automata() : adjacency_graph{} {
     casusu = WEIGHTED_LABELLED_GRAPH_CASE;
 }
 
-double edge_cost(const adjacency_graph *graph, size_t edge_id) {
+double jackbergus::fuzzyStringMatching3::graphs::edge_cost(const adjacency_graph *graph, size_t edge_id) {
     assert(edge_id < graph->E_size);
     if (graph->casusu == ADJACENCY_GRAPH_CASE) {
         return 1.0;
@@ -167,7 +168,7 @@ double edge_cost(const adjacency_graph *graph, size_t edge_id) {
     }
 }
 
-const std::string &node_label(const adjacency_graph *graph, size_t node_id) {
+const std::string &jackbergus::fuzzyStringMatching3::graphs::node_label(const adjacency_graph *graph, size_t node_id) {
     assert(node_id < graph->V_size);
     if (graph->casusu == ADJACENCY_GRAPH_CASE) {
         return "";
@@ -188,7 +189,7 @@ void from_string(weigthed_labelled_automata &graph, const std::vector<std::strin
     }
 }
 
-void dot(adjacency_graph *graph, std::ostream &os) {
+void jackbergus::fuzzyStringMatching3::graphs::dot(adjacency_graph *graph, std::ostream &os) {
     os << "digraph finite_state_machine {" << std::endl;
     os << "    rankdir=LR;" << std::endl;
     os << "    size=\"8,5\"" << std::endl;
@@ -217,7 +218,7 @@ void dot(adjacency_graph *graph, std::ostream &os) {
     os << "}";
 }
 
-void edge_compacting(weigthed_labelled_automata &graph) {
+void jackbergus::fuzzyStringMatching3::graphs::edge_compacting(weigthed_labelled_automata &graph) {
     for (size_t i = 0; i<graph.V_size; i++) {
         std::unordered_map<size_t, std::vector<size_t>> target_node_to_edge_id;
         for (size_t edge_id : graph.nodes.at(i)) {

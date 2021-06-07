@@ -15,6 +15,10 @@ add_library(structures STATIC include/basics/trace.h
                               source/basics/AlterTrace.cpp
                               include/basics/AlterTrace.h)
 
+add_library(graphs STATIC include/graphs/TransitionGraph.h
+                          source/graphs/adjacency_graph.cpp
+                          include/graphs/adjacency_graph.h nfa_to_dfa_weighted_labelled_automata.cpp nfa_to_dfa_weighted_labelled_automata.h)
+
 add_subdirectory(submodules/minauto)
 include_directories(submodules/minauto/include/minauto)
 include_directories(submodules/minauto/include)
@@ -22,5 +26,5 @@ include_directories(submodules/minauto/submodules/mpreal)
 include_directories(submodules/minauto/submodules/ublas/include)
 include_directories(submodules/minauto/submodules/boost_core/include)
 
-add_executable(complete_matching main.cpp source/graphs/TransitionGraph.cpp include/graphs/TransitionGraph.h source/graphs/adjacency_graph.cpp include/graphs/adjacency_graph.h)
-target_link_libraries(complete_matching equiv mpfr gmp hashing structures )
+add_executable(complete_matching main.cpp )
+target_link_libraries(complete_matching equiv mpfr gmp hashing structures graphs)

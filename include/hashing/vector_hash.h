@@ -27,6 +27,7 @@
 #define FUZZYSTRINGMATCHING2_VECTOR_HASH_H
 
 #include <hashing/hash_combine.h>
+#include <ostream>
 
 namespace std {
     template <typename T>
