@@ -44,6 +44,7 @@ namespace jackbergus {
             struct adjacency_graph {
                 size_t V_size, E_size;
                 graph_cases casusu;
+                std::unordered_set<size_t> removed_nodes;
 
                 std::vector<std::vector<size_t>> nodes;
                 std::vector<std::pair<size_t, size_t>> edge_ids;
@@ -68,6 +69,8 @@ namespace jackbergus {
  * @return
  */
             bool update_edge_target(adjacency_graph *graph, size_t edge_id, size_t new_dst, double* cost_to_update);
+
+            bool update_edge_source(adjacency_graph *graph, size_t edge_id, size_t new_src, double* cost_to_update);
 
             bool remove_edge(adjacency_graph *graph, size_t edge_id);
 
@@ -101,6 +104,8 @@ namespace jackbergus {
             const std::string& node_label(const adjacency_graph* graph, size_t node_id);
             void dot(adjacency_graph* graph, std::ostream &os);
             void from_string(weigthed_labelled_automata& graph, const std::vector<std::string>& trace);
+
+            bool remove_node(adjacency_graph* graph, size_t node_id);
 
             void edge_compacting(weigthed_labelled_automata& graph);
             void edge_compacting(weigthed_labelled_automata &graph, size_t i);

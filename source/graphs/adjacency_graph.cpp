@@ -75,9 +75,11 @@ bool jackbergus::fuzzyStringMatching3::graphs::update_edge_target(adjacency_grap
     if ((!graph) || (graph->E_size <= edge_id) || (graph->V_size <= new_dst))
         return false;
     auto& edge_src_dst = graph->edge_ids.at(edge_id);
-    auto& ingoing_dst = graph->ingoing_edges[edge_src_dst.second];
-    ingoing_dst.erase(std::remove(ingoing_dst.begin(), ingoing_dst.end(), edge_id), ingoing_dst.end());
-
+    auto it = graph->ingoing_edges.find(edge_src_dst.second);
+    if (it != graph->ingoing_edges.end()) {
+        auto& ingoing_dst = it->second;
+        ingoing_dst.erase(std::remove(ingoing_dst.begin(), ingoing_dst.end(), edge_id), ingoing_dst.end());
+    }
     edge_src_dst.second = new_dst;
     graph->ingoing_edges[edge_src_dst.second].emplace_back(edge_id);
     if (cost_to_update && (graph->casusu == WEIGHTED_LABELLED_GRAPH_CASE)) {
@@ -87,6 +89,8 @@ bool jackbergus::fuzzyStringMatching3::graphs::update_edge_target(adjacency_grap
     }
     return true;
 }
+
+
 
 bool jackbergus::fuzzyStringMatching3::graphs::remove_edge(adjacency_graph *graph, size_t edge_id) {
     if ((!graph) || (graph->E_size <= edge_id) /*|| (graph->V_size <= new_dst)*/)
@@ -194,6 +198,7 @@ void jackbergus::fuzzyStringMatching3::graphs::dot(adjacency_graph *graph, std::
     os << "    rankdir=LR;" << std::endl;
     os << "    size=\"8,5\"" << std::endl;
     for (int node_id = 0, N = graph->nodes.size(); node_id<N; node_id++) {
+        if (graph->removed_nodes.contains(node_id)) continue;
         std::string shape = "circle";
         os << "node [shape = circle, label=\"";
         if (graph->casusu == WEIGHTED_LABELLED_GRAPH_CASE) {
@@ -210,6 +215,8 @@ void jackbergus::fuzzyStringMatching3::graphs::dot(adjacency_graph *graph, std::
         std::vector<size_t> outgoing = graph->nodes.at(node_id);
         for (const size_t edge_id : outgoing) {
             size_t dst = graph->edge_ids.at(edge_id).second;
+            if (graph->removed_nodes.contains(node_id)) continue;
+            if (graph->removed_nodes.contains(dst)) continue;
             os << "q" << node_id << " -> q" << dst;
             if (graph->casusu == WEIGHTED_LABELLED_GRAPH_CASE) {
                 os << " [ label=\"" << ((weigthed_labelled_automata*)graph)->edge_weight.at(edge_id) << "\" ] ";
@@ -264,5 +271,36 @@ void jackbergus::fuzzyStringMatching3::graphs::edge_normalize(weigthed_labelled_
             graph.edge_weight[ref.at(i)] /= total_cost;
         }
     }
+}
+
+bool jackbergus::fuzzyStringMatching3::graphs::update_edge_source(adjacency_graph *graph, size_t edge_id, size_t new_src, double *cost_to_update) {
+    if ((!graph) || (graph->E_size <= edge_id) || (graph->V_size <= new_src))
+        return false;
+    auto& edge_src_dst = graph->edge_ids.at(edge_id);
+    auto& outgoing_src = graph->nodes[edge_src_dst.first];
+    outgoing_src.erase(std::remove(outgoing_src.begin(), outgoing_src.end(), edge_id), outgoing_src.end());
+
+    edge_src_dst.first = new_src;
+    graph->nodes[edge_src_dst.first].emplace_back(edge_id);
+    if (cost_to_update && (graph->casusu == WEIGHTED_LABELLED_GRAPH_CASE)) {
+        ((weigthed_labelled_automata*)graph)->minimum_edge_weight = std::min(
+                ((weigthed_labelled_automata*)graph)->minimum_edge_weight, *cost_to_update);
+        ((weigthed_labelled_automata*)graph)->edge_weight[edge_id] = *cost_to_update;
+    }
+    return true;
+}
+
+bool jackbergus::fuzzyStringMatching3::graphs::remove_node(adjacency_graph *graph, size_t node_id) {
+    if (graph->removed_nodes.contains(node_id)) return false;
+    {
+        auto ref = graph->nodes.at(node_id);
+        for (size_t edge_id : ref) remove_edge(graph, edge_id);
+    }
+    auto it = graph->ingoing_edges.find(node_id);
+    if (it == graph->ingoing_edges.end()) {
+        auto ref = it->second;
+        for (size_t edge_id : ref) remove_edge(graph, edge_id);
+    }
+    graph->removed_nodes.insert(node_id);
 }
 
