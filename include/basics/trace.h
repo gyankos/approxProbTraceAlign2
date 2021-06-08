@@ -27,6 +27,8 @@
 
 #include <hashing/vector_hash.h>
 
+
+
 namespace jackbergus {
     namespace fuzzyStringMatching3 {
 

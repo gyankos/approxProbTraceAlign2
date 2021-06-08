@@ -18,15 +18,15 @@
  * along with ProbabilisticTraceAlignment. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "nfa_to_dfa_weighted_labelled_automata.h"
+#include "graphs/algorithms/nfa_to_dfa_weighted_labelled_automata.h"
 
-jackbergus::fuzzyStringMatching3::graphs::algorithms::global_node_properties::global_node_properties(
+jackbergus::fuzzyStringMatching3::graphs::algorithms::determinization_node_eq_safe_heuristic::determinization_node_eq_safe_heuristic(
         const ::std::string &nodeLabel) : node_label(nodeLabel)  {
     sorted = false;
 }
 
-void jackbergus::fuzzyStringMatching3::graphs::algorithms::global_node_properties::insert_edge(const ::std::string &s,
-                                                                                               double w) {
+void jackbergus::fuzzyStringMatching3::graphs::algorithms::determinization_node_eq_safe_heuristic::insert_edge(const ::std::string &s,
+                                                                                                               double w) {
 #ifdef DO_STRINGS
     outgoing_edges.emplace_back(s, std::to_string(w));
 #else
@@ -37,7 +37,7 @@ void jackbergus::fuzzyStringMatching3::graphs::algorithms::global_node_propertie
 
 #include <algorithm>
 
-void jackbergus::fuzzyStringMatching3::graphs::algorithms::global_node_properties::finalize() {
+void jackbergus::fuzzyStringMatching3::graphs::algorithms::determinization_node_eq_safe_heuristic::finalize() {
     if (!sorted) {
         ::std::sort(outgoing_edges.begin(), outgoing_edges.end());
         sorted = true;
@@ -46,8 +46,8 @@ void jackbergus::fuzzyStringMatching3::graphs::algorithms::global_node_propertie
 
 #include <cassert>
 
-bool jackbergus::fuzzyStringMatching3::graphs::algorithms::global_node_properties::operator==(
-        const jackbergus::fuzzyStringMatching3::graphs::algorithms::global_node_properties &rhs) const {
+bool jackbergus::fuzzyStringMatching3::graphs::algorithms::determinization_node_eq_safe_heuristic::operator==(
+        const jackbergus::fuzzyStringMatching3::graphs::algorithms::determinization_node_eq_safe_heuristic &rhs) const {
     assert(sorted);
     assert(rhs.sorted);
     return node_id == rhs.node_id &&
@@ -55,8 +55,8 @@ bool jackbergus::fuzzyStringMatching3::graphs::algorithms::global_node_propertie
            outgoing_edges == rhs.outgoing_edges;
 }
 
-bool jackbergus::fuzzyStringMatching3::graphs::algorithms::global_node_properties::operator!=(
-        const jackbergus::fuzzyStringMatching3::graphs::algorithms::global_node_properties &rhs) const {
+bool jackbergus::fuzzyStringMatching3::graphs::algorithms::determinization_node_eq_safe_heuristic::operator!=(
+        const jackbergus::fuzzyStringMatching3::graphs::algorithms::determinization_node_eq_safe_heuristic &rhs) const {
     return !(rhs == *this);
 }
 
@@ -72,7 +72,7 @@ ssize_t jackbergus::fuzzyStringMatching3::graphs::algorithms::nfa_to_dfa_weighte
         const jackbergus::fuzzyStringMatching3::probabilisitc_model_trace &MT,
         jackbergus::fuzzyStringMatching3::graphs::weigthed_labelled_automata &out,
         jackbergus::fuzzyStringMatching3::graphs::algorithms::determinization_information &info,
-        std::unordered_map<global_node_properties, size_t> &node_compact_info) {
+        std::unordered_map<determinization_node_eq_safe_heuristic, size_t> &node_compact_info) {
 
     constexpr double limit = std::numeric_limits<double>::epsilon();
     if ((std::abs(MT.t_with_prob.probability - info.halting_condition) < limit) ||
@@ -81,7 +81,7 @@ ssize_t jackbergus::fuzzyStringMatching3::graphs::algorithms::nfa_to_dfa_weighte
     //std::unordered_set<size_t> curr;
 
     std::string curr_node_label = *MT.t_with_prob.t.rbegin();
-    global_node_properties gnp{curr_node_label};
+    determinization_node_eq_safe_heuristic gnp{curr_node_label};
     std::unordered_map<size_t, std::vector<size_t>> node_id_to_sequence_id;
     for (size_t i = 0, N = MT.underlying_sequences.size(); i<N; i++) {
         const auto& eta = MT.underlying_sequences.at(i);

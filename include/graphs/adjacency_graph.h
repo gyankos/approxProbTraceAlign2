@@ -74,6 +74,7 @@ namespace jackbergus {
             std::pair<size_t, size_t> add_undirected_edge(adjacency_graph* graph, size_t src, size_t dst, double cost = 1.0);
             const std::pair<size_t, size_t>& edge_from_id(const adjacency_graph* graph, size_t edge_id);
             const std::vector<size_t> &getOutgoingEdgesId(adjacency_graph* graph, size_t node_id);
+            std::unordered_map<size_t, std::vector<size_t>>::const_iterator hasIngoingEdges(const adjacency_graph* graph, size_t node_id);
             const std::vector<size_t> &getIngoingEdgesId(const adjacency_graph* graph, size_t node_id);
             void DFSUtil(const adjacency_graph* graph, size_t src, std::unordered_set<size_t> &visited);
             void printAllPathsUtil(const adjacency_graph* graph, size_t u, size_t d, std::unordered_set<size_t> &visited, std::vector<ssize_t> &path,
@@ -102,6 +103,8 @@ namespace jackbergus {
             void from_string(weigthed_labelled_automata& graph, const std::vector<std::string>& trace);
 
             void edge_compacting(weigthed_labelled_automata& graph);
+
+            void edge_compacting(weigthed_labelled_automata &graph, size_t i);
         }
     }
 }

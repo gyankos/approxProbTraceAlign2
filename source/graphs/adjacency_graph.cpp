@@ -71,7 +71,7 @@ size_t jackbergus::fuzzyStringMatching3::graphs::add_edge(adjacency_graph *graph
 
 #include <algorithm>
 
-bool update_edge_target(adjacency_graph *graph, size_t edge_id, size_t new_dst, double* cost_to_update) {
+bool jackbergus::fuzzyStringMatching3::graphs::update_edge_target(adjacency_graph *graph, size_t edge_id, size_t new_dst, double* cost_to_update) {
     if ((!graph) || (graph->E_size <= edge_id) || (graph->V_size <= new_dst))
         return false;
     auto& edge_src_dst = graph->edge_ids.at(edge_id);
@@ -197,9 +197,11 @@ void jackbergus::fuzzyStringMatching3::graphs::dot(adjacency_graph *graph, std::
         std::string shape = "circle";
         os << "node [shape = circle, label=\"";
         if (graph->casusu == WEIGHTED_LABELLED_GRAPH_CASE) {
-            os << ((weigthed_labelled_automata*)graph)->node_label.at(node_id);
-        } else {
-            os << std::to_string(node_id);
+            os << ((weigthed_labelled_automata*)graph)->node_label.at(node_id) << " [";
+        }
+        os << std::to_string(node_id);
+        if (graph->casusu == WEIGHTED_LABELLED_GRAPH_CASE) {
+            os <<  "] ";
         }
         os << "\", fontsize=10] q" << node_id << ";" << std::endl;
     }
@@ -220,26 +222,34 @@ void jackbergus::fuzzyStringMatching3::graphs::dot(adjacency_graph *graph, std::
 
 void jackbergus::fuzzyStringMatching3::graphs::edge_compacting(weigthed_labelled_automata &graph) {
     for (size_t i = 0; i<graph.V_size; i++) {
-        std::unordered_map<size_t, std::vector<size_t>> target_node_to_edge_id;
-        for (size_t edge_id : graph.nodes.at(i)) {
-            auto& ref = graph.edge_ids.at(edge_id);
-            if (graph.edge_ids.at(edge_id).second == ((size_t)-1)) continue;
-            target_node_to_edge_id[graph.edge_ids.at(edge_id).second].emplace_back(edge_id);
-        }
+        edge_compacting(graph, i);
+    }
+}
 
-        for (auto& ref : target_node_to_edge_id) {
-            if (ref.second.size() == 1) continue; // Do not need to compact if the node has only one outgoing edge
-            size_t elected_edge_id = *ref.second.begin();
-            double count = 0;
-            if (target_node_to_edge_id.size() == 1)
-                count = 1;
-            else for (size_t edge_id : ref.second)
+void jackbergus::fuzzyStringMatching3::graphs::edge_compacting(weigthed_labelled_automata &graph, size_t i) {
+    std::unordered_map<size_t, std::vector<size_t>> target_node_to_edge_id;
+    for (size_t edge_id : graph.nodes.at(i)) {
+        auto& ref = graph.edge_ids.at(edge_id);
+        if (graph.edge_ids.at(edge_id).second == ((size_t)-1)) continue;
+        target_node_to_edge_id[graph.edge_ids.at(edge_id).second].emplace_back(edge_id);
+    }
+
+    for (auto& ref : target_node_to_edge_id) {
+        if (ref.second.size() == 1) continue; // Do not need to compact if the node has only one outgoing edge
+        size_t elected_edge_id = *ref.second.begin();
+        double count = 0;
+        if (target_node_to_edge_id.size() == 1)
+            count = 1;
+        else for (size_t edge_id : ref.second)
                 count += graph.edge_weight.at(edge_id);
-            graph.edge_weight[elected_edge_id] = count;
-            for (size_t j = 1, N = ref.second.size(); j < N; j++) {
-                assert(remove_edge(&graph, ref.second.at(j)));
-            }
+        graph.edge_weight[elected_edge_id] = count;
+        for (size_t j = 1, N = ref.second.size(); j < N; j++) {
+            assert(remove_edge(&graph, ref.second.at(j)));
         }
     }
+}
+
+std::unordered_map<size_t, std::vector<size_t>>::const_iterator jackbergus::fuzzyStringMatching3::graphs::hasIngoingEdges(const adjacency_graph *graph, size_t node_id) {
+    return graph->ingoing_edges.find(node_id);
 }
 

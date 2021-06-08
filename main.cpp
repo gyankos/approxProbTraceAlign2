@@ -15,10 +15,13 @@
 #include <minauto/WordTree.hpp>
 #include <minauto/Minimisation.hpp>
 #include <minauto/EquivAlgorithms.hpp>
+#include "graphs/algorithms/nfa_to_dfa_weighted_labelled_automata.h"
 
 using namespace jackbergus::fuzzyStringMatching3;
 using namespace jackbergus::fuzzyStringMatching3::graphs;
+using namespace jackbergus::fuzzyStringMatching3::graphs::algorithms;
 
+#if 0
 template <typename DBL> probabilisitc_model_trace viterbi_top1(const weigthed_labelled_automata& graph,
                                                                 size_t src,
                                                                 size_t dst,
@@ -55,7 +58,7 @@ template <typename DBL> probabilisitc_model_trace viterbi_top1(const weigthed_la
             for (const size_t i : it->second) {
                 DBL kprev = -1;
                 size_t karg = 0;
-                for (const size_t edge_k : getIngoingEdgesId(&graph, i)) {
+                for (const size_t edge_k : getIngoingEdgesId(&graph, i)) { // TODO: hasIngoingEdges!
                     size_t k = graph.edge_ids.at(edge_k).first;
                     DBL kval = T1(k, j-1) * graph.edge_weight.at(edge_k);
                     if (kprev < kval) {
@@ -258,15 +261,243 @@ void test_viterbi_1() {
               viterbi_top1<double>(graph, 0, 5, {"ciao", "oddio", "mamma", "guarda", "bene"}) << std::endl;
 
 }
+#endif
 
 #include <cmath>
 #include <set>
 
+void extend_set(const std::vector<jackbergus::fuzzyStringMatching3::log_trace>& postfixes,
+                const std::string& postfix,
+                std::vector<jackbergus::fuzzyStringMatching3::log_trace>& extended) {
+    for (auto logtrace : postfixes) {
+        logtrace.emplace_back(postfix);
+        extended.emplace_back(logtrace);
+    }
+
+}
+
+struct backward_dfa_minimization_safe_heuristic {
+            bool sorted;
+    std::string node_label;
+    std::vector<std::pair<double, std::set<jackbergus::fuzzyStringMatching3::log_trace>>> outgoing;
+
+    backward_dfa_minimization_safe_heuristic(const std::string &nodeLabel) : node_label(nodeLabel) {
+        sorted = false;
+    }
+
+    backward_dfa_minimization_safe_heuristic(const backward_dfa_minimization_safe_heuristic& ) = default;
+    backward_dfa_minimization_safe_heuristic(backward_dfa_minimization_safe_heuristic&& ) = default;
+    backward_dfa_minimization_safe_heuristic& operator=(const backward_dfa_minimization_safe_heuristic& ) = default;
+    backward_dfa_minimization_safe_heuristic& operator=(backward_dfa_minimization_safe_heuristic&& ) = default;
+    void finalize() {
+        if (!sorted) {
+            std::sort(outgoing.begin(), outgoing.end());
+            sorted = true;
+        }
+    }
+
+    bool operator==(const backward_dfa_minimization_safe_heuristic &rhs) const {
+        return node_label == rhs.node_label &&
+               outgoing == rhs.outgoing;
+    }
+
+    bool operator!=(const backward_dfa_minimization_safe_heuristic &rhs) const {
+        return !(rhs == *this);
+    }
+};
+
+namespace std {
+    template <>
+    struct hash<backward_dfa_minimization_safe_heuristic> {
+        std::size_t operator()(const backward_dfa_minimization_safe_heuristic& k) const {
+            std::hash<std::string> sh;
+            std::hash<double> dh;
+
+            size_t s = hash_combine(17, sh(k.node_label));
+            for (const auto& ref : k.outgoing) {
+                size_t s2 = 13;
+                for (const auto& trace : ref.second)
+                    s2 = hash_combine(s2, trace);
+                s = hash_combine(s, dh(ref.first) ^ s2);
+            }
+            return s;
+        }
+    };
+}
+
+
+#include <stack>
+
+/**
+ * Providing an approximated topological sort, where the loops are ignored
+ *
+ * @param g                 Graph to be approximately visited
+ * @param initial_node      The only graph node having no ingoing edges
+ * @param vec               output: The vector containing the topologically sorted vertices
+ */
+void approximated_topo_sort(adjacency_graph* g, size_t initial_node, std::vector<size_t>& vec) {
+    std::vector<size_t> order(g->V_size, 0);
+    std::vector<bool> visited(g->V_size, false);
+    size_t curr_pos = g->V_size;
+
+    std::stack<std::pair<size_t, bool>> visitStack;
+    visitStack.emplace(initial_node, false);
+
+    // DFS Visit
+    while (!visitStack.empty()) {
+        size_t u = 0; bool u_visited = false;
+        std::tie(u, u_visited) = visitStack.top();
+        visitStack.pop();
+        if (u_visited) {
+            // If it was already visited before continuing the visit, then put it back to the stack
+            order[curr_pos--] = u;
+        } else {
+            if (!visited.at(u)) {
+                // Visit the outoing edges
+                visited[u] = true;
+                const auto& ref = getOutgoingEdgesId(g, u);
+                if (!ref.empty()) {
+                    // Remember to visit the node back after visiting the adjacent nodes
+                    visitStack.emplace(u, true);
+                    for (size_t i = 0, N = ref.size(); i<N; i++) {
+                        // Visiting the adjacent nodes
+                        visitStack.emplace(g->edge_ids.at(ref[i]).second, false);
+                    }
+                } else {
+                    order[curr_pos--] = u;
+                }
+            }
+        }
+    }
+
+    std::swap(vec, order);
+}
+
+/**
+ * Provides the approximately longest path algorithm, by ignoring loops that might diverge the algorithm
+ *
+ * @param g                 Graph to visit
+ * @param initial_node      Initial node having no ingoing edges from which start the visit
+ * @return                  Associates to each node id (vector index) its order (value)
+ */
+std::vector<size_t> approx_longest_path(adjacency_graph* g, size_t initial_node) {
+    std::vector<size_t> topo_order;
+    std::vector<size_t> neighbour_size(g->V_size, 0);
+    approximated_topo_sort(g, initial_node, topo_order);
+    for (size_t i = 0; i < (g->V_size); i++) {
+        size_t max_size = 0;
+        size_t iId = topo_order.at(i);
+        ///std::cout << " u = " << iId << std::endl;
+        const auto it = hasIngoingEdges(g, iId);
+        if (it != g->ingoing_edges.cend()) {
+            const auto& ingoing = it->second;
+            for (size_t j = 0, N = ingoing.size(); j<N; j++) {
+                ///std::cout << "\t" << g->edge_ids.at(ingoing.at(j)) << std::endl;
+                size_t nSize = neighbour_size.at(g->edge_ids.at(ingoing.at(j)).first);
+                if (nSize > max_size)
+                    max_size = nSize;
+            }
+        }
+
+        max_size++;
+        neighbour_size[iId] = max_size;
+    }
+
+    return neighbour_size;
+}
+
+void backward_minimization(weigthed_labelled_automata& graph, const determinization_information& info) {
+    std::unordered_map<size_t, std::set<jackbergus::fuzzyStringMatching3::log_trace>> postfix_map;
+    std::vector<bool> visited_nodes(graph.V_size, false);
+    visited_nodes[info.is_final_state_inserted_into_result] = true;
+    postfix_map[info.is_final_state_inserted_into_result].insert({graph.node_label.at(info.is_final_state_inserted_into_result)});
+    std::vector<size_t> VertexOrder = approx_longest_path(&graph, info.tg_initial);
+    for (size_t i = 0, N = VertexOrder.size(); i<N; i++)
+        std::cout << "vertex #" << i << " @" << VertexOrder.at(i) << std::endl;
+    std::cout << std::endl;
+
+    std::vector<size_t> frontier;
+    for (size_t edge_id : graph.ingoing_edges.at(info.is_final_state_inserted_into_result)) {
+        size_t src = graph.edge_ids.at(edge_id).first;
+        if (!visited_nodes.at(src)) {
+            visited_nodes[src] = true;
+            frontier.emplace_back(src);
+        }
+    }
+    std::sort( frontier.begin(), frontier.end(), [&VertexOrder](const size_t u, const size_t v) {
+        return VertexOrder.at(u) >= VertexOrder.at(v);
+    });
+    frontier.erase( std::unique( frontier.begin(), frontier.end() ), frontier.end() );
+
+    while (!frontier.empty()) {
+        std::vector<size_t> Xyields, uVector;
+
+        std::unordered_map<backward_dfa_minimization_safe_heuristic, std::vector<size_t>> Map;
+        for (size_t node_id : frontier) {
+            std::string postfix{graph.node_label.at(node_id)};
+            backward_dfa_minimization_safe_heuristic h{postfix};
+            for (size_t outgoing_edges : graph.nodes.at(node_id)) {
+                size_t target = graph.edge_ids.at(outgoing_edges).second;
+                for (auto logtrace : postfix_map.at(target)) {
+                    logtrace.emplace_back(postfix);
+                    postfix_map[node_id].insert(logtrace);
+                }
+                h.outgoing.emplace_back(graph.edge_weight.at(outgoing_edges),
+                                        postfix_map.at(target));
+            }
+            h.finalize();
+            Map[h].emplace_back(node_id);
+        }
+        for (auto& ref : Map) {
+            std::sort( ref.second.begin(), ref.second.end() );
+            ref.second.erase( std::unique( ref.second.begin(), ref.second.end() ), ref.second.end() );
+            if (ref.second.size() == 1) continue;
+            size_t x_signed = *ref.second.begin();
+            Xyields.emplace_back(x_signed);
+
+            for (size_t i = 1, N = ref.second.size(); i<N; i++) {
+                std::vector<size_t> IN = graph.ingoing_edges.at(ref.second.at(i));
+                for (size_t edge_id : IN) {
+                    uVector.emplace_back(graph.edge_ids.at(edge_id).first);
+                    update_edge_target(&graph, edge_id, x_signed, nullptr);
+                }
+            }
+        }
+
+        std::sort( uVector.begin(), uVector.end() );
+        uVector.erase( std::unique( uVector.begin(), uVector.end() ), uVector.end() );
+        for (size_t i : uVector) edge_compacting(graph, i);
+        uVector.clear();
+
+        std::sort( Xyields.begin(), Xyields.end() );
+        Xyields.erase( std::unique( Xyields.begin(), Xyields.end() ), Xyields.end() );
+
+        frontier.clear();
+        for (size_t node_id : Xyields) {
+            for (size_t edge_id : graph.ingoing_edges.at(node_id)) {
+                size_t src = graph.edge_ids.at(edge_id).first;
+                if (!visited_nodes.at(src)) {
+                    visited_nodes[src] = true;
+                    frontier.emplace_back(src);
+                }
+            }
+        }
+        std::sort( frontier.begin(), frontier.end(), [&VertexOrder](const size_t u, const size_t v) {
+            return VertexOrder.at(u) >= VertexOrder.at(v);
+        } );
+        frontier.erase( std::unique( frontier.begin(), frontier.end() ), frontier.end() );
+    }
+
+}
+
+
+
+
 
 void generate_my_minimization(double init_prob = 1.0, double stop_probability = 1E-06) {
     weigthed_labelled_automata wla, out;
-    std::unordered_map<global_node_properties, size_t> node_compact_info;
-#if 1
+    std::unordered_map<determinization_node_eq_safe_heuristic, size_t> node_compact_info;
+#if 0
     size_t n0 = add_node(&wla, "a");
     size_t n1 = add_node(&wla, "a");
     size_t n2 = add_node(&wla, "a");
@@ -335,11 +566,15 @@ void generate_my_minimization(double init_prob = 1.0, double stop_probability = 
     // could compact those into one single edge by summing up the weights
     edge_compacting(out);
 
-
-
     dot(&out, std::cout);
+
+    // Providing the backward minimization for DFAs, where edge cost is also considered.
+    // This is a sufficient condition, as we just have one single final node.
+    backward_minimization(out, info);
+
 }
 
+/*
 void automata_minimization() {
     test_automata_minimization(4, 0, 3, {{0, 1, 0.5, "a"},
                                          {0, 2, 0.5, "b"},
@@ -348,6 +583,7 @@ void automata_minimization() {
                                          {1, 3, 0.5, "d"},
                                          {2, 3, 0.5, "d"}});
 }
+*/
 
 int main() {
 

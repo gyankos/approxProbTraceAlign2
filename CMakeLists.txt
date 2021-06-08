@@ -15,9 +15,9 @@ add_library(structures STATIC include/basics/trace.h
                               source/basics/AlterTrace.cpp
                               include/basics/AlterTrace.h)
 
-add_library(graphs STATIC include/graphs/TransitionGraph.h
+add_library(graphs OBJECT include/graphs/TransitionGraph.h
                           source/graphs/adjacency_graph.cpp
-                          include/graphs/adjacency_graph.h nfa_to_dfa_weighted_labelled_automata.cpp nfa_to_dfa_weighted_labelled_automata.h)
+                          include/graphs/adjacency_graph.h source/graphs/algorithms/nfa_to_dfa_weighted_labelled_automata.cpp include/graphs/algorithms/nfa_to_dfa_weighted_labelled_automata.h)
 
 add_subdirectory(submodules/minauto)
 include_directories(submodules/minauto/include/minauto)

@@ -42,7 +42,7 @@ namespace jackbergus {
  * I.e., a node is defined by its node id, the associated label, and the outgoing edges' labels (from the
  * target node) as well as their associated cost. This will be used to identify when we reached a similar node
  */
-                struct global_node_properties {
+                struct determinization_node_eq_safe_heuristic {
                     std::set<size_t> node_id;
                     std::string node_label;
 #ifdef DO_STRINGS
@@ -52,21 +52,21 @@ namespace jackbergus {
 #endif
                             outgoing_edges;
 
-                    global_node_properties(const std::string &nodeLabel);
+                    determinization_node_eq_safe_heuristic(const std::string &nodeLabel);
 
                     void insert_edge(const std::string &s, double w);
 
                     void finalize();
 
-                    bool operator==(const global_node_properties &rhs) const;
+                    bool operator==(const determinization_node_eq_safe_heuristic &rhs) const;
 
-                    bool operator!=(const global_node_properties &rhs) const;
+                    bool operator!=(const determinization_node_eq_safe_heuristic &rhs) const;
 
                 private:
                     bool sorted = false;
 
                 public:
-                    friend std::ostream &operator<<(std::ostream &os, const global_node_properties &properties) {
+                    friend std::ostream &operator<<(std::ostream &os, const determinization_node_eq_safe_heuristic &properties) {
                         std::vector<size_t> S{properties.node_id.begin(), properties.node_id.end()};
                         os << "node_id: " << S << " node_label: " << properties.node_label << " outgoing_edges: "
                            << properties.outgoing_edges << " sorted: " << properties.sorted;
@@ -82,11 +82,11 @@ namespace jackbergus {
 
 namespace std {
     /**
-     * Hashing function associated to global_node_properties
+     * Hashing function associated to determinization_node_eq_safe_heuristic
      */
     template <>
-    struct hash<jackbergus::fuzzyStringMatching3::graphs::algorithms::global_node_properties> {
-        std::size_t operator()(const jackbergus::fuzzyStringMatching3::graphs::algorithms::global_node_properties& k) const {
+    struct hash<jackbergus::fuzzyStringMatching3::graphs::algorithms::determinization_node_eq_safe_heuristic> {
+        std::size_t operator()(const jackbergus::fuzzyStringMatching3::graphs::algorithms::determinization_node_eq_safe_heuristic& k) const {
             std::hash<std::string> sh;
 #ifndef DO_STRINGS
             std::hash<double> dh;
@@ -136,7 +136,7 @@ namespace jackbergus{
                                                               const probabilisitc_model_trace& MT,
                                                               weigthed_labelled_automata& out,
                                                               determinization_information& info,
-                                                              std::unordered_map<global_node_properties, size_t>& node_compact_info);
+                                                              std::unordered_map<determinization_node_eq_safe_heuristic, size_t>& node_compact_info);
 
             }
         }
