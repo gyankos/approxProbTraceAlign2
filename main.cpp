@@ -276,54 +276,22 @@ void extend_set(const std::vector<jackbergus::fuzzyStringMatching3::log_trace>& 
 
 }
 
-struct backward_dfa_minimization_safe_heuristic {
-            bool sorted;
-    std::string node_label;
-    std::vector<std::pair<double, std::set<jackbergus::fuzzyStringMatching3::log_trace>>> outgoing;
-
-    backward_dfa_minimization_safe_heuristic(const std::string &nodeLabel) : node_label(nodeLabel) {
-        sorted = false;
-    }
-
-    backward_dfa_minimization_safe_heuristic(const backward_dfa_minimization_safe_heuristic& ) = default;
-    backward_dfa_minimization_safe_heuristic(backward_dfa_minimization_safe_heuristic&& ) = default;
-    backward_dfa_minimization_safe_heuristic& operator=(const backward_dfa_minimization_safe_heuristic& ) = default;
-    backward_dfa_minimization_safe_heuristic& operator=(backward_dfa_minimization_safe_heuristic&& ) = default;
-    void finalize() {
-        if (!sorted) {
-            std::sort(outgoing.begin(), outgoing.end());
-            sorted = true;
-        }
-    }
-
-    bool operator==(const backward_dfa_minimization_safe_heuristic &rhs) const {
-        return node_label == rhs.node_label &&
-               outgoing == rhs.outgoing;
-    }
-
-    bool operator!=(const backward_dfa_minimization_safe_heuristic &rhs) const {
-        return !(rhs == *this);
-    }
-};
-
-namespace std {
-    template <>
-    struct hash<backward_dfa_minimization_safe_heuristic> {
-        std::size_t operator()(const backward_dfa_minimization_safe_heuristic& k) const {
-            std::hash<std::string> sh;
-            std::hash<double> dh;
-
-            size_t s = hash_combine(17, sh(k.node_label));
-            for (const auto& ref : k.outgoing) {
-                size_t s2 = 13;
-                for (const auto& trace : ref.second)
-                    s2 = hash_combine(s2, trace);
-                s = hash_combine(s, dh(ref.first) ^ s2);
-            }
-            return s;
-        }
-    };
+#include <vector>
+template <typename T>
+void unique_sorted_vector(std::vector<T>& Xyields) {
+    if (Xyields.empty()) return;
+    std::sort( Xyields.begin(), Xyields.end() );
+    Xyields.erase( std::unique( Xyields.begin(), Xyields.end() ), Xyields.end() );
 }
+
+#include <vector>
+template <typename T, typename F>
+void unique_sorted_vector_cmp(std::vector<T>& Xyields, F comp) {
+    if (Xyields.empty()) return;
+    std::sort( Xyields.begin(), Xyields.end(), comp );
+    Xyields.erase( std::unique( Xyields.begin(), Xyields.end() ), Xyields.end() );
+}
+
 
 
 #include <stack>
@@ -406,6 +374,224 @@ std::vector<size_t> approx_longest_path(adjacency_graph* g, size_t initial_node)
     return neighbour_size;
 }
 
+#include <hashing/pair_hash.h>
+
+void marca_rec(std::pair<size_t, size_t> cp,
+               std::unordered_map<std::pair<size_t, size_t>, std::vector<std::pair<size_t, size_t>>>& has_lista,
+               boost::numeric::ublas::compressed_matrix<char,boost::numeric::ublas::row_major>& Matrix) {
+    if (cp.first == cp.second) return; // imposiburu
+    if (cp.first > cp.second)
+        std::swap(cp.first, cp.second);
+
+    auto it = has_lista.find(cp);
+    if (it != has_lista.end()) {
+        auto cpV = it->second;
+        has_lista.erase(it);
+        Matrix(cp.first, cp.second) = (char)0;
+        for (size_t i = 0, N = cpV.size(); i<N; i++) {
+            marca_rec(cpV.at(i), has_lista, Matrix);
+        }
+    } else {
+        Matrix(cp.first, cp.second) = (char)0;
+    }
+}
+
+
+void heuristic_scala(weigthed_labelled_automata& graph, size_t initial_node, size_t final_state) {
+    std::unordered_map<std::string, std::unordered_map<jackbergus::fuzzyStringMatching3::graphs::algorithms::determinization_node_eq_safe_heuristic, std::vector<size_t>>> M;
+    std::vector<size_t> VertexOrder = approx_longest_path(&graph, initial_node);
+
+    std::cerr << "[Init M]" << std::endl;
+    for (size_t i = 0, N = graph.V_size; i<N; i++) {
+        if (i == final_state) continue;
+        const std::string& i_label = graph.node_label.at(i);
+        jackbergus::fuzzyStringMatching3::graphs::algorithms::determinization_node_eq_safe_heuristic hm{i_label};
+        for (size_t edge_out : getOutgoingEdgesId(&graph, i)) {
+            hm.insert_edge(graph.node_label.at(graph.edge_ids.at(edge_out).second),
+                           graph.edge_weight.at(edge_out));
+        }
+        hm.finalize();
+        M[graph.node_label.at(i)][hm].emplace_back(i);
+    }
+
+    std::cerr << "[Init diagonalMatrix]" << std::endl;
+    boost::numeric::ublas::compressed_matrix<char,boost::numeric::ublas::row_major> diagonalMatrix(graph.V_size, graph.V_size);
+    auto it = M.begin();
+    while (it != M.end()) {
+        auto it2 = it->second.begin();
+        while (it2 != it->second.end()) {
+            // In this case, I am the only node similar to myself: therefore, I can skip it.
+            if (it2->second.size() <= 1)
+                it2 = it->second.erase(it2);
+            else {
+                size_t N = it2->second.size();
+                std::sort(it2->second.begin(), it2->second.end(), [&VertexOrder](const size_t u, const size_t v) {
+                    return VertexOrder.at(u) >= VertexOrder.at(v);
+                });
+                for (size_t i = 0; i<N; i++) {
+                    size_t u = it2->second.at(i);
+                    for (size_t j = 0; j<i; j++) {
+                        size_t v = it2->second.at(j);
+                        if (u < v) {
+                            std::cout << "[" << u << "," << v << "]=1" << std::endl;
+                            diagonalMatrix(u, v) = (char)1;
+                        } else {
+                            std::cout << "[" << v << "," << u << "]=1" << std::endl;
+                            diagonalMatrix(v, u) = (char)1;
+                        }
+                    }
+                }
+            }
+        }
+        it++;
+    }
+
+    // Please observe that the above step is just an heuristic, and I therefore cannot immediately assume that
+    // all the nodes that are marked as similar are indeed similar, but we are indeed sure that all the remaining
+    // nodes must be different!
+    std::unordered_map<std::pair<size_t, size_t>, std::vector<std::pair<size_t, size_t>>> pair_to_remember;
+    for (const auto& cp1 : M) {
+        for (const auto& cp2 : cp1.second) {
+            size_t N = cp2.second.size();
+            for (size_t i = 0; i<N; i++) {
+                size_t u = cp2.second.at(i);
+
+                std::unordered_map<std::string, size_t> edge_map;
+                for (size_t edge_id : getOutgoingEdgesId(&graph, u)) {
+                    size_t target = graph.edge_ids.at(edge_id).second;
+                    edge_map[graph.node_label.at(target)] = target;
+                }
+                for (size_t j = 0; j<i; j++) {
+                    size_t v = cp2.second.at(j);
+
+                    bool are_u_and_v_equivalent = true;
+                    std::vector<std::pair<size_t,size_t>> to_emplace_current_elements;
+                    for (size_t edge_id : getOutgoingEdgesId(&graph, v)) {
+                        size_t target = graph.edge_ids.at(edge_id).second;
+                        size_t opponent_target = edge_map.at(graph.node_label.at(target));
+
+                        char val = (char)1;
+                        if (target < opponent_target) {
+                            val = diagonalMatrix(target, opponent_target);
+                        } else if (opponent_target < target) {
+                            val = diagonalMatrix(opponent_target, target);
+                        }
+                        // If they are not equivalent nodes: please skip the iteration!
+                        if (!val) {
+                            are_u_and_v_equivalent = false;
+                            to_emplace_current_elements.clear();
+                            break;
+                        } else {
+                            if (target < opponent_target) {
+                                to_emplace_current_elements.emplace_back(target, opponent_target);
+                            } else if (opponent_target < target) {
+                                to_emplace_current_elements.emplace_back(opponent_target, target);
+                            }
+                        }
+                    }
+                    if (!are_u_and_v_equivalent) {
+                        std::pair<size_t, size_t> x;
+                        if (u < v) {
+                            diagonalMatrix(u, v) = (char)0;
+                            x.first = u;
+                            x.second = v;
+                        } else {
+                            diagonalMatrix(v, u) = (char)0;
+                            x.first = v;
+                            x.second = u;
+                        }
+                        marca_rec(x, pair_to_remember, diagonalMatrix);
+                    } else {
+                        size_t src, dst;
+                        if (u<v) {
+                            src = u;
+                            dst = v;
+                        } else {
+                            src = v;
+                            dst = u;
+                        }
+                        for (const auto& cp : to_emplace_current_elements) {
+                            pair_to_remember[cp].emplace_back(src, dst);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+
+    std::cerr << "[Print diagonalMatrix]" << std::endl;
+    for (auto it1 = diagonalMatrix.begin1(); it1 != diagonalMatrix.end1(); it1++)
+    {
+        for (auto it2 = it1.begin(); it2 != it1.end(); it2++)
+        {
+            std::cout << "(" << it2.index1() << "," << it2.index2() << ") = ";
+            std::cout << *it2 << std::endl;
+        }
+    }
+}
+
+#if 0
+
+struct backward_dfa_minimization_safe_heuristic {
+            bool sorted;
+    std::string node_label;
+    std::vector<std::pair<double, std::set<jackbergus::fuzzyStringMatching3::log_trace>>> outgoing;
+    std::vector<size_t> loop_nodes;
+
+    backward_dfa_minimization_safe_heuristic(const std::string &nodeLabel) : node_label(nodeLabel) {
+        sorted = false;
+    }
+
+    backward_dfa_minimization_safe_heuristic(const backward_dfa_minimization_safe_heuristic& ) = default;
+    backward_dfa_minimization_safe_heuristic(backward_dfa_minimization_safe_heuristic&& ) = default;
+    backward_dfa_minimization_safe_heuristic& operator=(const backward_dfa_minimization_safe_heuristic& ) = default;
+    backward_dfa_minimization_safe_heuristic& operator=(backward_dfa_minimization_safe_heuristic&& ) = default;
+    void finalize() {
+        if (!sorted) {
+            std::sort(outgoing.begin(), outgoing.end());
+            unique_sorted_vector(loop_nodes);
+            sorted = true;
+        }
+    }
+
+    bool operator==(const backward_dfa_minimization_safe_heuristic &rhs) const {
+        return node_label == rhs.node_label &&
+               outgoing == rhs.outgoing &&
+                loop_nodes == rhs.loop_nodes;
+    }
+
+    bool operator!=(const backward_dfa_minimization_safe_heuristic &rhs) const {
+        return !(rhs == *this);
+    }
+};
+
+namespace std {
+    template <>
+    struct hash<backward_dfa_minimization_safe_heuristic> {
+        std::size_t operator()(const backward_dfa_minimization_safe_heuristic& k) const {
+            std::hash<std::string> sh;
+            std::hash<double> dh;
+
+            size_t hc = hash_combine(17, sh(k.node_label));
+
+            size_t s = 31;
+            for (const auto& ref : k.outgoing) {
+                size_t s2 = 13;
+                for (const auto& trace : ref.second)
+                    s2 = hash_combine(s2, trace);
+                s = hash_combine(s, dh(ref.first) ^ s2);
+            }
+
+            size_t s3 = 19;
+            for (const auto& ref : k.loop_nodes)
+                s3 = hash_combine(s3, ref);
+
+            return hash_combine(hash_combine(hc, s), s3);
+        }
+    };
+}
+
 void backward_minimization(weigthed_labelled_automata& graph, const determinization_information& info) {
     std::unordered_map<size_t, std::set<jackbergus::fuzzyStringMatching3::log_trace>> postfix_map;
     std::vector<bool> visited_nodes(graph.V_size, false);
@@ -424,26 +610,35 @@ void backward_minimization(weigthed_labelled_automata& graph, const determinizat
             frontier.emplace_back(src);
         }
     }
-    std::sort( frontier.begin(), frontier.end(), [&VertexOrder](const size_t u, const size_t v) {
+    unique_sorted_vector_cmp(frontier, [&VertexOrder](const size_t u, const size_t v) {
         return VertexOrder.at(u) >= VertexOrder.at(v);
     });
-    frontier.erase( std::unique( frontier.begin(), frontier.end() ), frontier.end() );
 
     while (!frontier.empty()) {
         std::vector<size_t> Xyields, uVector;
 
+        std::cout << "Frontier F = " << frontier << std::endl;
+
         std::unordered_map<backward_dfa_minimization_safe_heuristic, std::vector<size_t>> Map;
         for (size_t node_id : frontier) {
+            size_t vertex_order_node_id = VertexOrder.at(node_id);
             std::string postfix{graph.node_label.at(node_id)};
             backward_dfa_minimization_safe_heuristic h{postfix};
             for (size_t outgoing_edges : graph.nodes.at(node_id)) {
                 size_t target = graph.edge_ids.at(outgoing_edges).second;
-                for (auto logtrace : postfix_map.at(target)) {
-                    logtrace.emplace_back(postfix);
-                    postfix_map[node_id].insert(logtrace);
+                if (VertexOrder.at(target) >= vertex_order_node_id) {
+                    assert(postfix_map.contains(target));
+                    for (auto logtrace : postfix_map.at(target)) {
+                        logtrace.emplace_back(postfix);
+                        postfix_map[node_id].insert(logtrace);
+                    }
+                    h.outgoing.emplace_back(graph.edge_weight.at(outgoing_edges),
+                                            postfix_map.at(target));
+                } else {
+                    // Please observe! Keep track of the nodes actually creating a loop. Making that a limitation,
+                    // so two equivalent nodes must also have equivalent looping counterparts
+                    h.loop_nodes.emplace_back(target);
                 }
-                h.outgoing.emplace_back(graph.edge_weight.at(outgoing_edges),
-                                        postfix_map.at(target));
             }
             h.finalize();
             Map[h].emplace_back(node_id);
@@ -464,13 +659,12 @@ void backward_minimization(weigthed_labelled_automata& graph, const determinizat
             }
         }
 
-        std::sort( uVector.begin(), uVector.end() );
-        uVector.erase( std::unique( uVector.begin(), uVector.end() ), uVector.end() );
+
+        unique_sorted_vector(uVector);
         for (size_t i : uVector) edge_compacting(graph, i);
         uVector.clear();
 
-        std::sort( Xyields.begin(), Xyields.end() );
-        Xyields.erase( std::unique( Xyields.begin(), Xyields.end() ), Xyields.end() );
+        unique_sorted_vector(Xyields);
 
         frontier.clear();
         for (size_t node_id : Xyields) {
@@ -482,22 +676,46 @@ void backward_minimization(weigthed_labelled_automata& graph, const determinizat
                 }
             }
         }
-        std::sort( frontier.begin(), frontier.end(), [&VertexOrder](const size_t u, const size_t v) {
+
+        unique_sorted_vector_cmp(frontier, [&VertexOrder](const size_t u, const size_t v) {
             return VertexOrder.at(u) >= VertexOrder.at(v);
-        } );
-        frontier.erase( std::unique( frontier.begin(), frontier.end() ), frontier.end() );
+        });
     }
 
 }
+#endif
 
 
+determinization_information topology1(weigthed_labelled_automata& wla, bool withLoops = true, double stop_probability = 1E-06) {
+    size_t n0 = add_node(&wla, "a");
+    size_t n1 = add_node(&wla, "b");
+    size_t n2 = add_node(&wla, "b");
+    size_t n3 = add_node(&wla, "c");
+    size_t n4 = add_node(&wla, "a");
+    size_t n5 = add_node(&wla, "c");
+    size_t n6 = add_node(&wla, "a");
+    size_t n7 = add_node(&wla, "f");
 
+    add_edge(&wla, n0, n1, 0.5);
+    add_edge(&wla, n1, n3, 0.5);
+    add_edge(&wla, n1, n4, 0.5);
+    add_edge(&wla, n4, n7, 1.0);
+    add_edge(&wla, n0, n2, 0.5);
+    add_edge(&wla, n2, n5, 0.5);
+    add_edge(&wla, n2, n6, 0.5);
+    add_edge(&wla, n6, n7, 1.0);
+    if (withLoops) {
+        add_edge(&wla, n3, n1, 0.5);
+        add_edge(&wla, n5, n2, 0.5);
+    }
+    add_edge(&wla, n3, n7, withLoops ? 0.5 : 1.0);
+    add_edge(&wla, n5, n7, withLoops ? 0.5 : 1.0);
 
+    //TransitionGraph<double> tg(wla, n0, n4);
+    return {stop_probability, n0, n7};
+}
 
-void generate_my_minimization(double init_prob = 1.0, double stop_probability = 1E-06) {
-    weigthed_labelled_automata wla, out;
-    std::unordered_map<determinization_node_eq_safe_heuristic, size_t> node_compact_info;
-#if 0
+determinization_information topology0(weigthed_labelled_automata& wla, double stop_probability = 1E-06) {
     size_t n0 = add_node(&wla, "a");
     size_t n1 = add_node(&wla, "a");
     size_t n2 = add_node(&wla, "a");
@@ -517,42 +735,58 @@ void generate_my_minimization(double init_prob = 1.0, double stop_probability = 
     add_edge(&wla, n5, n4, 1.0);
 
     //TransitionGraph<double> tg(wla, n0, n4);
-    determinization_information info{stop_probability, n0, n4};
-#else
-    size_t n0 = add_node(&wla, "a");
-    size_t n1 = add_node(&wla, "b");
-    size_t n2 = add_node(&wla, "b");
-    size_t n3 = add_node(&wla, "c");
-    size_t n4 = add_node(&wla, "a");
-    size_t n5 = add_node(&wla, "c");
+    return {stop_probability, n0, n4};
+}
+
+determinization_information topology2(weigthed_labelled_automata& wla, double stop_probability = 1E-06) {
+    size_t n0 = add_node(&wla, ".");
+    size_t n1 = add_node(&wla, "a");
+    size_t n2 = add_node(&wla, "a");
+    size_t n3 = add_node(&wla, "b");
+    size_t n4 = add_node(&wla, "c");
+    size_t n5 = add_node(&wla, "a");
     size_t n6 = add_node(&wla, "a");
-    size_t n7 = add_node(&wla, "f");
+    size_t n7 = add_node(&wla, "b");
+    size_t n8 = add_node(&wla, "b");
+    size_t n9 = add_node(&wla, "c");
+    size_t n10 = add_node(&wla, "d");
+    size_t n11 = add_node(&wla, "e");
+    size_t n13 = add_node(&wla, "a");
 
-    bool withLoops = true;
 
-    add_edge(&wla, n0, n1, 0.5);
-    add_edge(&wla, n1, n3, 0.5);
-    add_edge(&wla, n1, n4, 0.5);
-    add_edge(&wla, n4, n7, 1.0);
-    add_edge(&wla, n0, n2, 0.5);
-    add_edge(&wla, n2, n5, 0.5);
-    add_edge(&wla, n2, n6, 0.5);
-    add_edge(&wla, n6, n7, 1.0);
-    if (withLoops) {
-        add_edge(&wla, n3, n1, 0.5);
-        add_edge(&wla, n5, n2, 0.5);
-    }
-    add_edge(&wla, n3, n7, withLoops ? 0.5 : 1.0);
-    add_edge(&wla, n5, n7, withLoops ? 0.5 : 1.0);
+    add_edge(&wla, n0, n1, 0.7);
+    add_edge(&wla, n1, n3, 1.0);
+    add_edge(&wla, n3, n5, 1.0);
+    add_edge(&wla, n5, n7, 1.0);
+    add_edge(&wla, n7, n13, 0.5);
+    add_edge(&wla, n13, n7, 1.0);
+    add_edge(&wla, n7, n9, 0.5);
+    add_edge(&wla, n9, n11, 1.0);
 
-    //TransitionGraph<double> tg(wla, n0, n4);
-    determinization_information info{stop_probability, n0, n7};
-#endif
+    add_edge(&wla, n0, n2, 0.3);
+    add_edge(&wla, n2, n4, 1.0);
+    add_edge(&wla, n4, n6, 1.0);
+    add_edge(&wla, n6, n8, 1.0);
+    add_edge(&wla, n8, n10, 0.5);
+    add_edge(&wla, n8, n6, 0.5);
+    add_edge(&wla, n10, n11, 1.0);
+
+    return {stop_probability, n0, n11};
+}
+
+void generate_my_minimization(double init_prob = 1.0, double stop_probability = 1E-06) {
+    weigthed_labelled_automata wla, out;
+    std::unordered_map<determinization_node_eq_safe_heuristic, size_t> node_compact_info;
+
+    //determinization_information info = topology0(wla, stop_probability);
+    //determinization_information info = topology1(wla, true, stop_probability);
+    //determinization_information info = topology1(wla, false, stop_probability);
+    determinization_information info = topology2(wla, stop_probability);
 
     probabilisitc_model_trace pmt;
     pmt.t_with_prob.probability = init_prob;
-    pmt.t_with_prob.t.emplace_back(node_label(&wla, n0));
-    pmt.underlying_sequences.emplace_back(init_prob, n0);
+    pmt.t_with_prob.t.emplace_back(node_label(&wla, info.tg_initial));
+    pmt.underlying_sequences.emplace_back(init_prob, info.tg_initial);
     //std::cout << pmt << std::endl;
 
     // Preliminary minimizing the visit and the complexity by compacting the edge traversing: sum up the edges' probability
@@ -566,12 +800,12 @@ void generate_my_minimization(double init_prob = 1.0, double stop_probability = 
     // could compact those into one single edge by summing up the weights
     edge_compacting(out);
 
-    dot(&out, std::cout);
-
     // Providing the backward minimization for DFAs, where edge cost is also considered.
     // This is a sufficient condition, as we just have one single final node.
-    backward_minimization(out, info);
+    ///backward_minimization(out, info);
+    //heuristic_scala(out, info.tg_initial, info.tg_final);
 
+    dot(&out, std::cout);
 }
 
 /*

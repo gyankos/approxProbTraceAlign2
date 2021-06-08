@@ -29,14 +29,17 @@
 #include <utility>
 #include <functional>
 
-struct pair_hash
-{
+namespace std {
     template <class T1, class T2>
-    std::size_t operator() (const std::pair<T1, T2> &pair) const
+    struct hash<std::pair<T1, T2>>
     {
-        return std::hash<T1>()(pair.first) ^ std::hash<T2>()(pair.second);
-    }
-};
+        std::size_t operator()(const std::pair<T1, T2> &pair) const
+        {
+            return std::hash<T1>()(pair.first) ^ std::hash<T2>()(pair.second);
+        }
+    };
+
+}
 
 template < class K, class V > std::ostream& operator << (std::ostream& os, const std::pair<K, V>& v) {
     return os << "⟪" << v.first << ", " << v.second << "⟫";
