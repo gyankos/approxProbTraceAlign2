@@ -253,3 +253,16 @@ std::unordered_map<size_t, std::vector<size_t>>::const_iterator jackbergus::fuzz
     return graph->ingoing_edges.find(node_id);
 }
 
+void jackbergus::fuzzyStringMatching3::graphs::edge_normalize(weigthed_labelled_automata &graph) {
+    for (size_t u = 0; u < graph.V_size; u++) {
+        auto& ref = graph.nodes.at(u);
+        double total_cost = 0.0;
+        for (size_t i = 0, N = ref.size(); i<N; i++) {
+            total_cost += graph.edge_weight.at(ref.at(i));
+        }
+        for (size_t i = 0, N = ref.size(); i<N; i++) {
+            graph.edge_weight[ref.at(i)] /= total_cost;
+        }
+    }
+}
+

@@ -406,6 +406,8 @@ void heuristic_scala(weigthed_labelled_automata& graph, size_t initial_node, siz
         if (i == final_state) continue;
         const std::string& i_label = graph.node_label.at(i);
         jackbergus::fuzzyStringMatching3::graphs::algorithms::determinization_node_eq_safe_heuristic hm{i_label};
+        if (i == 9)
+            std::cerr << "BREAK" << std::endl;
         for (size_t edge_out : getOutgoingEdgesId(&graph, i)) {
             hm.insert_edge(graph.node_label.at(graph.edge_ids.at(edge_out).second),
                            graph.edge_weight.at(edge_out));
@@ -441,6 +443,7 @@ void heuristic_scala(weigthed_labelled_automata& graph, size_t initial_node, siz
                         }
                     }
                 }
+                it2++;
             }
         }
         it++;
@@ -519,16 +522,27 @@ void heuristic_scala(weigthed_labelled_automata& graph, size_t initial_node, siz
         }
     }
 
-
+    std::vector<size_t> Rv, Lv;
+    std::unordered_map<size_t, size_t> backtrack_to;
+    std::vector<std::pair<size_t, size_t>> EqR;
     std::cerr << "[Print diagonalMatrix]" << std::endl;
-    for (auto it1 = diagonalMatrix.begin1(); it1 != diagonalMatrix.end1(); it1++)
-    {
-        for (auto it2 = it1.begin(); it2 != it1.end(); it2++)
-        {
-            std::cout << "(" << it2.index1() << "," << it2.index2() << ") = ";
-            std::cout << *it2 << std::endl;
+    for (auto it1 = diagonalMatrix.begin1(); it1 != diagonalMatrix.end1(); it1++) {
+        for (auto it2 = it1.begin(); it2 != it1.end(); it2++) {
+            if (*it2) {
+                size_t l = it2.index1(), r = it2.index2();
+                Rv.emplace_back(r);
+                Lv.emplace_back(l);
+                auto it = backtrack_to.emplace(r, l);
+                if (!it.second) {
+                    it.first->second = std::min(it.first->second, l);
+                }
+            }
         }
     }
+    unique_sorted_vector(Rv);
+    unique_sorted_vector(Lv);
+    std::sort(EqR.begin(), EqR.end());
+    std::cout << EqR << std::endl;
 }
 
 #if 0
@@ -738,7 +752,7 @@ determinization_information topology0(weigthed_labelled_automata& wla, double st
     return {stop_probability, n0, n4};
 }
 
-determinization_information topology2(weigthed_labelled_automata& wla, double stop_probability = 1E-06) {
+determinization_information topology2(weigthed_labelled_automata& wla, bool add_limiting_nodes = true, double stop_probability = 1E-06) {
     size_t n0 = add_node(&wla, ".");
     size_t n1 = add_node(&wla, "a");
     size_t n2 = add_node(&wla, "a");
@@ -748,11 +762,8 @@ determinization_information topology2(weigthed_labelled_automata& wla, double st
     size_t n6 = add_node(&wla, "a");
     size_t n7 = add_node(&wla, "b");
     size_t n8 = add_node(&wla, "b");
-    size_t n9 = add_node(&wla, "c");
-    size_t n10 = add_node(&wla, "d");
     size_t n11 = add_node(&wla, "e");
     size_t n13 = add_node(&wla, "a");
-
 
     add_edge(&wla, n0, n1, 0.7);
     add_edge(&wla, n1, n3, 1.0);
@@ -760,16 +771,24 @@ determinization_information topology2(weigthed_labelled_automata& wla, double st
     add_edge(&wla, n5, n7, 1.0);
     add_edge(&wla, n7, n13, 0.5);
     add_edge(&wla, n13, n7, 1.0);
-    add_edge(&wla, n7, n9, 0.5);
-    add_edge(&wla, n9, n11, 1.0);
 
     add_edge(&wla, n0, n2, 0.3);
     add_edge(&wla, n2, n4, 1.0);
     add_edge(&wla, n4, n6, 1.0);
     add_edge(&wla, n6, n8, 1.0);
-    add_edge(&wla, n8, n10, 0.5);
     add_edge(&wla, n8, n6, 0.5);
-    add_edge(&wla, n10, n11, 1.0);
+
+    if (add_limiting_nodes) {
+        size_t n9 = add_node(&wla, "c");
+        size_t n10 = add_node(&wla, "d");
+        add_edge(&wla, n7, n9, 0.5);
+        add_edge(&wla, n9, n11, 1.0);
+        add_edge(&wla, n8, n10, 0.5);
+        add_edge(&wla, n10, n11, 1.0);
+    } else {
+        add_edge(&wla, n7, n11, 0.5);
+        add_edge(&wla, n8, n11, 0.5);
+    }
 
     return {stop_probability, n0, n11};
 }
@@ -781,7 +800,8 @@ void generate_my_minimization(double init_prob = 1.0, double stop_probability = 
     //determinization_information info = topology0(wla, stop_probability);
     //determinization_information info = topology1(wla, true, stop_probability);
     //determinization_information info = topology1(wla, false, stop_probability);
-    determinization_information info = topology2(wla, stop_probability);
+    //determinization_information info = topology2(wla, true, stop_probability);
+    determinization_information info = topology2(wla, false, stop_probability);
 
     probabilisitc_model_trace pmt;
     pmt.t_with_prob.probability = init_prob;
@@ -789,21 +809,27 @@ void generate_my_minimization(double init_prob = 1.0, double stop_probability = 
     pmt.underlying_sequences.emplace_back(init_prob, info.tg_initial);
     //std::cout << pmt << std::endl;
 
+    // Ensuring that all the edges have 1.0 total sum for their outgoing probability
+    // O(|V+E|)
+    edge_normalize(wla);
+
     // Preliminary minimizing the visit and the complexity by compacting the edge traversing: sum up the edges' probability
     // leading to the same outgoing state
+    // O(|V+E|)
     edge_compacting(wla);
 
     // Making the NFA into a DFA, by exploiting the prefix strategy
+    // O()
     nfa_to_dfa_weighted_labelled_automata(wla, pmt, out, info, node_compact_info);
 
     // While creating the wheel state, I might have multiple outgoing edges leading to the same state. Therefore, I
     // could compact those into one single edge by summing up the weights
+    // O(|V+E|)
     edge_compacting(out);
 
     // Providing the backward minimization for DFAs, where edge cost is also considered.
     // This is a sufficient condition, as we just have one single final node.
-    ///backward_minimization(out, info);
-    //heuristic_scala(out, info.tg_initial, info.tg_final);
+    heuristic_scala(out, info.tg_initial, info.is_final_state_inserted_into_result);
 
     dot(&out, std::cout);
 }

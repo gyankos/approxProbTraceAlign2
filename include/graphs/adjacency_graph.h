@@ -103,8 +103,8 @@ namespace jackbergus {
             void from_string(weigthed_labelled_automata& graph, const std::vector<std::string>& trace);
 
             void edge_compacting(weigthed_labelled_automata& graph);
-
             void edge_compacting(weigthed_labelled_automata &graph, size_t i);
+            void edge_normalize(weigthed_labelled_automata& graph);
         }
     }
 }
