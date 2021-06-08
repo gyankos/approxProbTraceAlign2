@@ -398,133 +398,141 @@ void marca_rec(std::pair<size_t, size_t> cp,
 
 
 void heuristic_scala(weigthed_labelled_automata& graph, size_t initial_node, size_t final_state) {
-    std::unordered_map<std::string, std::unordered_map<jackbergus::fuzzyStringMatching3::graphs::algorithms::determinization_node_eq_safe_heuristic, std::vector<size_t>>> M;
-    std::vector<size_t> VertexOrder = approx_longest_path(&graph, initial_node);
 
-    std::cerr << "[Init M]" << std::endl;
-    for (size_t i = 0, N = graph.V_size; i<N; i++) {
-        if (i == final_state) continue;
-        const std::string& i_label = graph.node_label.at(i);
-        jackbergus::fuzzyStringMatching3::graphs::algorithms::determinization_node_eq_safe_heuristic hm{i_label};
-        if (i == 9)
-            std::cerr << "BREAK" << std::endl;
-        for (size_t edge_out : getOutgoingEdgesId(&graph, i)) {
-            hm.insert_edge(graph.node_label.at(graph.edge_ids.at(edge_out).second),
-                           graph.edge_weight.at(edge_out));
-        }
-        hm.finalize();
-        M[graph.node_label.at(i)][hm].emplace_back(i);
-    }
-
-    std::cerr << "[Init diagonalMatrix]" << std::endl;
     boost::numeric::ublas::compressed_matrix<char,boost::numeric::ublas::row_major> diagonalMatrix(graph.V_size, graph.V_size);
-    auto it = M.begin();
-    while (it != M.end()) {
-        auto it2 = it->second.begin();
-        while (it2 != it->second.end()) {
-            // In this case, I am the only node similar to myself: therefore, I can skip it.
-            if (it2->second.size() <= 1)
-                it2 = it->second.erase(it2);
-            else {
-                size_t N = it2->second.size();
-                std::sort(it2->second.begin(), it2->second.end(), [&VertexOrder](const size_t u, const size_t v) {
-                    return VertexOrder.at(u) >= VertexOrder.at(v);
-                });
-                for (size_t i = 0; i<N; i++) {
-                    size_t u = it2->second.at(i);
-                    for (size_t j = 0; j<i; j++) {
-                        size_t v = it2->second.at(j);
-                        if (u < v) {
-                            std::cout << "[" << u << "," << v << "]=1" << std::endl;
-                            diagonalMatrix(u, v) = (char)1;
-                        } else {
-                            std::cout << "[" << v << "," << u << "]=1" << std::endl;
-                            diagonalMatrix(v, u) = (char)1;
+    {
+
+        std::unordered_map<std::string, std::unordered_map<jackbergus::fuzzyStringMatching3::graphs::algorithms::determinization_node_eq_safe_heuristic, std::vector<size_t>>> M;
+        {
+            std::vector<size_t> VertexOrder = approx_longest_path(&graph, initial_node);
+            std::cerr << "[Init M]" << std::endl;
+            for (size_t i = 0, N = graph.V_size; i<N; i++) {
+                if (i == final_state) continue;
+                const std::string& i_label = graph.node_label.at(i);
+                jackbergus::fuzzyStringMatching3::graphs::algorithms::determinization_node_eq_safe_heuristic hm{i_label};
+                if (i == 9)
+                    std::cerr << "BREAK" << std::endl;
+                for (size_t edge_out : getOutgoingEdgesId(&graph, i)) {
+                    hm.insert_edge(graph.node_label.at(graph.edge_ids.at(edge_out).second),
+                                   graph.edge_weight.at(edge_out));
+                }
+                hm.finalize();
+                M[graph.node_label.at(i)][hm].emplace_back(i);
+            }
+
+            std::cerr << "[Init diagonalMatrix]" << std::endl;
+            auto it = M.begin();
+            while (it != M.end()) {
+                auto it2 = it->second.begin();
+                while (it2 != it->second.end()) {
+                    // In this case, I am the only node similar to myself: therefore, I can skip it.
+                    if (it2->second.size() <= 1)
+                        it2 = it->second.erase(it2);
+                    else {
+                        size_t N = it2->second.size();
+                        std::sort(it2->second.begin(), it2->second.end(), [&VertexOrder](const size_t u, const size_t v) {
+                            return VertexOrder.at(u) >= VertexOrder.at(v);
+                        });
+                        for (size_t i = 0; i<N; i++) {
+                            size_t u = it2->second.at(i);
+                            for (size_t j = 0; j<i; j++) {
+                                size_t v = it2->second.at(j);
+                                if (u < v) {
+                                    std::cout << "[" << u << "," << v << "]=1" << std::endl;
+                                    diagonalMatrix(u, v) = (char)1;
+                                } else {
+                                    std::cout << "[" << v << "," << u << "]=1" << std::endl;
+                                    diagonalMatrix(v, u) = (char)1;
+                                }
+                            }
                         }
+                        it2++;
                     }
                 }
-                it2++;
+                it++;
             }
+            VertexOrder.clear();
         }
-        it++;
-    }
 
-    // Please observe that the above step is just an heuristic, and I therefore cannot immediately assume that
-    // all the nodes that are marked as similar are indeed similar, but we are indeed sure that all the remaining
-    // nodes must be different!
-    std::unordered_map<std::pair<size_t, size_t>, std::vector<std::pair<size_t, size_t>>> pair_to_remember;
-    for (const auto& cp1 : M) {
-        for (const auto& cp2 : cp1.second) {
-            size_t N = cp2.second.size();
-            for (size_t i = 0; i<N; i++) {
-                size_t u = cp2.second.at(i);
 
-                std::unordered_map<std::string, size_t> edge_map;
-                for (size_t edge_id : getOutgoingEdgesId(&graph, u)) {
-                    size_t target = graph.edge_ids.at(edge_id).second;
-                    edge_map[graph.node_label.at(target)] = target;
-                }
-                for (size_t j = 0; j<i; j++) {
-                    size_t v = cp2.second.at(j);
+        // Please observe that the above step is just an heuristic, and I therefore cannot immediately assume that
+        // all the nodes that are marked as similar are indeed similar, but we are indeed sure that all the remaining
+        // nodes must be different!
+        std::unordered_map<std::pair<size_t, size_t>, std::vector<std::pair<size_t, size_t>>> pair_to_remember;
+        for (auto cp1 = M.begin(); cp1 != M.end(); cp1 = M.erase(cp1)) {
+            for (const auto& cp2 : cp1->second) {
+                size_t N = cp2.second.size();
+                for (size_t i = 0; i<N; i++) {
+                    size_t u = cp2.second.at(i);
 
-                    bool are_u_and_v_equivalent = true;
-                    std::vector<std::pair<size_t,size_t>> to_emplace_current_elements;
-                    for (size_t edge_id : getOutgoingEdgesId(&graph, v)) {
+                    std::unordered_map<std::string, size_t> edge_map;
+                    for (size_t edge_id : getOutgoingEdgesId(&graph, u)) {
                         size_t target = graph.edge_ids.at(edge_id).second;
-                        size_t opponent_target = edge_map.at(graph.node_label.at(target));
+                        edge_map[graph.node_label.at(target)] = target;
+                    }
+                    for (size_t j = 0; j<i; j++) {
+                        size_t v = cp2.second.at(j);
 
-                        char val = (char)1;
-                        if (target < opponent_target) {
-                            val = diagonalMatrix(target, opponent_target);
-                        } else if (opponent_target < target) {
-                            val = diagonalMatrix(opponent_target, target);
-                        }
-                        // If they are not equivalent nodes: please skip the iteration!
-                        if (!val) {
-                            are_u_and_v_equivalent = false;
-                            to_emplace_current_elements.clear();
-                            break;
-                        } else {
+                        bool are_u_and_v_equivalent = true;
+                        std::vector<std::pair<size_t,size_t>> to_emplace_current_elements;
+                        for (size_t edge_id : getOutgoingEdgesId(&graph, v)) {
+                            size_t target = graph.edge_ids.at(edge_id).second;
+                            size_t opponent_target = edge_map.at(graph.node_label.at(target));
+
+                            char val = (char)1;
                             if (target < opponent_target) {
-                                to_emplace_current_elements.emplace_back(target, opponent_target);
+                                val = diagonalMatrix(target, opponent_target);
                             } else if (opponent_target < target) {
-                                to_emplace_current_elements.emplace_back(opponent_target, target);
+                                val = diagonalMatrix(opponent_target, target);
+                            }
+                            // If they are not equivalent nodes: please skip the iteration!
+                            if (!val) {
+                                are_u_and_v_equivalent = false;
+                                to_emplace_current_elements.clear();
+                                break;
+                            } else {
+                                if (target < opponent_target) {
+                                    to_emplace_current_elements.emplace_back(target, opponent_target);
+                                } else if (opponent_target < target) {
+                                    to_emplace_current_elements.emplace_back(opponent_target, target);
+                                }
+                            }
+                        }
+                        if (!are_u_and_v_equivalent) {
+                            std::pair<size_t, size_t> x;
+                            if (u < v) {
+                                diagonalMatrix(u, v) = (char)0;
+                                x.first = u;
+                                x.second = v;
+                            } else {
+                                diagonalMatrix(v, u) = (char)0;
+                                x.first = v;
+                                x.second = u;
+                            }
+                            marca_rec(x, pair_to_remember, diagonalMatrix);
+                        } else {
+                            size_t src, dst;
+                            if (u<v) {
+                                src = u;
+                                dst = v;
+                            } else {
+                                src = v;
+                                dst = u;
+                            }
+                            for (const auto& cp : to_emplace_current_elements) {
+                                pair_to_remember[cp].emplace_back(src, dst);
                             }
                         }
                     }
-                    if (!are_u_and_v_equivalent) {
-                        std::pair<size_t, size_t> x;
-                        if (u < v) {
-                            diagonalMatrix(u, v) = (char)0;
-                            x.first = u;
-                            x.second = v;
-                        } else {
-                            diagonalMatrix(v, u) = (char)0;
-                            x.first = v;
-                            x.second = u;
-                        }
-                        marca_rec(x, pair_to_remember, diagonalMatrix);
-                    } else {
-                        size_t src, dst;
-                        if (u<v) {
-                            src = u;
-                            dst = v;
-                        } else {
-                            src = v;
-                            dst = u;
-                        }
-                        for (const auto& cp : to_emplace_current_elements) {
-                            pair_to_remember[cp].emplace_back(src, dst);
-                        }
-                    }
                 }
             }
         }
     }
 
-    std::vector<size_t> Rv, Lv;
+    std::vector<size_t> Rv, Lv, tmpLv;
     std::unordered_map<size_t, size_t> backtrack_to;
     std::vector<std::pair<size_t, size_t>> EqR;
+    std::unordered_map<size_t, std::vector<size_t>> eqClassesResolved;
     std::cerr << "[Print diagonalMatrix]" << std::endl;
     for (auto it1 = diagonalMatrix.begin1(); it1 != diagonalMatrix.end1(); it1++) {
         for (auto it2 = it1.begin(); it2 != it1.end(); it2++) {
@@ -532,6 +540,7 @@ void heuristic_scala(weigthed_labelled_automata& graph, size_t initial_node, siz
                 size_t l = it2.index1(), r = it2.index2();
                 Rv.emplace_back(r);
                 Lv.emplace_back(l);
+                EqR.emplace_back(l, r);
                 auto it = backtrack_to.emplace(r, l);
                 if (!it.second) {
                     it.first->second = std::min(it.first->second, l);
@@ -541,8 +550,23 @@ void heuristic_scala(weigthed_labelled_automata& graph, size_t initial_node, siz
     }
     unique_sorted_vector(Rv);
     unique_sorted_vector(Lv);
+    std::set_intersection(Lv.begin(),Lv.end(),
+                          Rv.begin(),Rv.end(),
+                          std::back_inserter(tmpLv));
+    std::vector<bool> W(graph.V_size, false);
+    for (size_t u : tmpLv) W[u] = true;
+    Lv = tmpLv; // Minimal-id elements belonging to the equivalence class
+
     std::sort(EqR.begin(), EqR.end());
-    std::cout << EqR << std::endl;
+    std::cout << "EqR = " << EqR << std::endl;
+    for (auto& cp : backtrack_to) {
+        auto it = backtrack_to.find(cp.second);
+        while (it != backtrack_to.end()) {
+            cp.second = std::min(cp.second, it->second);
+            it = backtrack_to.find(cp.second);
+        }
+    }
+    std::cout << "backtrack_to = " << backtrack_to << std::endl;
 }
 
 #if 0

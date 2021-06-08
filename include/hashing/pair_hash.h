@@ -45,4 +45,11 @@ template < class K, class V > std::ostream& operator << (std::ostream& os, const
     return os << "⟪" << v.first << ", " << v.second << "⟫";
 }
 
+template < class K, class V > std::ostream& operator << (std::ostream& os, const std::unordered_map<K, V>& m) {
+    for (const auto& cp : m) {
+        os << cp << std::endl;
+    }
+    return os;
+}
+
 #endif //FUZZYSTRINGMATCHING2_PAIR_HASH_H
